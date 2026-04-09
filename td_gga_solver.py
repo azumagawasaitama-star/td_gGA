@@ -159,8 +159,71 @@ class TDgGADynamics:
            - dPhi_dt = -1j * np.dot(H_emb, Phi)
            - dn_ab_dt = -1j * (np.dot(n_ab, h_qp.T) - np.dot(h_qp, n_ab))
         7. pack_state で dPhi_dt と dn_ab_dt を1次元実数配列にして return する。
+
+        前提: self.op_bb および self.op_cb（フォック空間演算子行列）を
+              インスタンス生成後に属性として設定しておくこと。
+              例: system.op_bb = op_bb; system.op_cb = op_cb
         """
-        pass
+        B = self.B
+
+        # 1. 1次元実数配列 Y_flat → 複素 Phi, n_ab
+        Phi, n_ab = unpack_state(Y_flat, self.dim_Phi, B)
+
+        # 2. 局所密度行列 Δ を計算
+        #    δL/δΛ_{ab} = 0 より: Δ_{ab} = <Ψ_0|f†_a f_b|Ψ_0> = n_{ab}
+        Delta = n_ab
+
+        # 3. 代数制約を解いて R, D, Λ^c を取得（ウォームスタート付き）
+        #    δL/δΛ^c = 0: <Φ|b†b|Φ> = Δ  →  Λ^c を決定
+        #    δL/δD = 0:   <Φ|c†b|Φ> = [Δ(1-Δ)]^{1/2} R  →  R を決定
+        R, D, Lmbdac = solve_algebraic_constraints(
+            Delta, Phi,
+            self.R_guess, self.D_guess, self.Lmbdac_guess,
+            self.op_bb, self.op_cb,
+        )
+
+        # 4. ウォームスタート用推測値を現ステップ解で上書き
+        self.R_guess      = R
+        self.D_guess      = D
+        self.Lmbdac_guess = Lmbdac
+
+        # 5a. 埋め込みハミルトニアン H_emb を構築 (dim_Phi × dim_Phi)
+        #
+        #       [ H_loc[:B,:B] + Λ^c  |  D  ]
+        # H_emb = [                       |     ]
+        #       [      D†              |  H_loc[B:,B:]  ]
+        #
+        #  Λ^c: 物理軌道の補正場（δL/δΛ^c から決定）
+        #  D  : 物理軌道–浴軌道間のハイブリダイゼーション
+        H_emb = np.array(self.H_loc, dtype=complex)
+        H_emb[:B, :B] += Lmbdac          # Λ^c を物理軌道対角ブロックに加算
+        H_emb[:B, B:]  += D              # D  を物理→浴ブロックに加算
+        H_emb[B:, :B]  += D.conj().T    # D† を浴→物理ブロックに加算
+
+        # 5b. 準粒子ハミルトニアン h_qp を構築 (B × B)
+        #
+        #  h_qp = R† H_phys R + Λ^c
+        #
+        #  H_phys = H_loc の物理軌道ブロック (B × B)
+        #  R: Gutzwiller 繰り込み行列（[Δ(1-Δ)]^{1/2} R = <c†b> の解）
+        H_phys = self.H_loc[:B, :B]
+        h_qp = R.conj().T @ H_phys @ R + Lmbdac
+
+        # 6. 時間微分を計算
+        #
+        # シュレーディンガー方程式（式 eq:eom_phi）:
+        #   i ∂_t |Φ(t)⟩ = H_emb(t) |Φ(t)⟩
+        #   → dΦ/dt = -i H_emb Φ
+        dPhi_dt  = -1j * np.dot(H_emb, Phi)
+
+        # von Neumann / Heisenberg 方程式（式 eq:eom_density）:
+        #   i ∂_t n_{ab} = Σ_c [ h_{qp,bc} n_{ac} - h_{qp,ca} n_{cb} ]
+        #                = (n h_qp^T)_{ab} - (h_qp n)_{ab}
+        #   → dn/dt = -i ( n h_qp^T - h_qp n )
+        dn_ab_dt = -1j * (np.dot(n_ab, h_qp.T) - np.dot(h_qp, n_ab))
+
+        # 7. dΦ/dt, dn/dt を1次元実数配列にパックして返す
+        return pack_state(dPhi_dt, dn_ab_dt)
 
 # ==========================================
 # 4. メイン実行関数
