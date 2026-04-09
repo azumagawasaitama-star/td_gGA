@@ -245,7 +245,37 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params):
        - t_eval = t_eval
     6. 解のオブジェクト(sol)から時間と状態のトラジェクトリを抽出し、物理量(二重占有数など)を計算して返す。
     """
-    pass
+    # physics_params から必要なパラメータを取得
+    dim_Phi     = physics_params['dim_Phi']
+    B           = physics_params['B']
+    H_loc_final = physics_params['H_loc_final']
+    R_guess_0   = physics_params['R_guess_0']
+    D_guess_0   = physics_params['D_guess_0']
+    Lmbdac_guess_0 = physics_params['Lmbdac_guess_0']
+    op_bb       = physics_params['op_bb']
+    op_cb       = physics_params['op_cb']
+
+    # 1. TDgGADynamics インスタンスを生成し、フォック空間演算子行列を属性として設定
+    system = TDgGADynamics(dim_Phi, B, H_loc_final, R_guess_0, D_guess_0, Lmbdac_guess_0)
+    system.op_bb = op_bb
+    system.op_cb = op_cb
+
+    # 2. 初期状態を1次元実数配列にパック
+    Y0_flat = pack_state(Phi_0, n_ab_0)
+
+    # 3. 評価時刻の配列を作成
+    t_eval = np.arange(0, t_max, dt)
+
+    # 4. ODE ソルバーで時間発展を計算
+    sol = integrate.solve_ivp(
+        fun=system.compute_derivatives,
+        t_span=(0, t_max),
+        y0=Y0_flat,
+        method='RK45',
+        t_eval=t_eval,
+    )
+
+    return sol
 
 if __name__ == "__main__":
     # ここにダミーデータを与えてテスト実行するコードを書く
