@@ -1,4 +1,5 @@
-# LaTeX build files
+*.npz
+*.npy
 *.aux
 *.log
 main.pdf
@@ -9,3 +10,5 @@ main.pdf
 *.bbl
 *.blg
 *.toc
+__pycache__/
+.DS_Store
