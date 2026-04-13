@@ -897,178 +897,186 @@ class GA:
 
 
 
-######### Set up tight-binding and lattice to be used ########
-clat = "Inf"
-lksum = clat != "Inf"
-eks = -99
+# Module-level globals required by GA class methods
+clat      = "Inf"
+lksum     = clat != "Inf"   # False for infinite lattice / semicircular DOS
+alpha     = 1.0             # Hubbard model (lhubbard=True)
+locdbg    = False           # Debug output flag
+lmu_sweep = True            # Half-filling (n=0.5): sweep over mu
 
-if not lksum: print("Use semicircular DOS (infinite lattice)")
+if __name__ == "__main__":
+    ######### Set up tight-binding and lattice to be used ########
+    clat = "Inf"
+    lksum = clat != "Inf"
+    eks = -99
 
-# ... (Lattice setup code omitted as it is skipped for clat="Inf") ...
+    if not lksum: print("Use semicircular DOS (infinite lattice)")
 
-######### Hamiltonan settings #########
-nphysorb    = 2                 
-nghost      = 4                 
-shift_list  = (-1.0,)            
-V           = 1.0               
-alpha       = 0.0               
-tij         = 1.0               
-T           = 0.002             
+    # ... (Lattice setup code omitted as it is skipped for clat="Inf") ...
 
-######## Setting for Hubbard model ########
-lhubbard  = True                          
-if lhubbard:
-  alpha = 1.0                             
-  T     = 0.003                             
+    ######### Hamiltonan settings #########
+    nphysorb    = 2                 
+    nghost      = 4                 
+    shift_list  = (-1.0,)            
+    V           = 1.0               
+    alpha       = 0.0               
+    tij         = 1.0               
+    T           = 0.002             
 
-lmicroit_mu = False 
-locdbg   = False          
+    ######## Setting for Hubbard model ########
+    lhubbard  = True                          
+    if lhubbard:
+      alpha = 1.0                             
+      T     = 0.003                             
 
-print("################### PARAMETERS/SETTINGS OF THE CALCULATION #######################")
+    lmicroit_mu = False 
+    locdbg   = False          
 
-ntot_list   = (0.5,)
-lmu_sweep = np.abs(ntot_list[0]-0.5)<1e-7
+    print("################### PARAMETERS/SETTINGS OF THE CALCULATION #######################")
 
-U_start = 0.1
-U_end   = 5.0
-U_step  = 0.1 
+    ntot_list   = (0.5,)
+    lmu_sweep = np.abs(ntot_list[0]-0.5)<1e-7
 
-mu_start = 0.0
-mu_end = 0.0
-mu_step = 1.0 
+    U_start = 0.1
+    U_end   = 5.0
+    U_step  = 0.1 
 
-print("U_start, U_end, U_step", U_start, U_end, U_step)
+    mu_start = 0.0
+    mu_end = 0.0
+    mu_step = 1.0 
 
-# For half-filling start from Mott phase (irep_start = 1) and perform a forward and backward
-irep_start = 1
-nrep = 3
+    print("U_start, U_end, U_step", U_start, U_end, U_step)
 
-if nghost==0 or np.abs(ntot_list[0]-0.5) > 1e-7: 
-  irep_start = 2
-  nrep = 3
+    # For half-filling start from Mott phase (irep_start = 1) and perform a forward and backward
+    irep_start = 1
+    nrep = 3
 
-# Loop over particle numbers
-for ntot in ntot_list:
-  icnt = 0
-  GA_list = []
+    if nghost==0 or np.abs(ntot_list[0]-0.5) > 1e-7: 
+      irep_start = 2
+      nrep = 3
 
-  # Main Loop (Forward/Backward)
-  for reploop in range(irep_start,nrep):
+    # Loop over particle numbers
+    for ntot in ntot_list:
+      icnt = 0
+      GA_list = []
 
-    print(f"------- REPETITION LOOP Nr. {reploop} --------")
+      # Main Loop (Forward/Backward)
+      for reploop in range(irep_start,nrep):
 
-    # Determine Sweep Direction
-    is_backward = (reploop % 2 != 0)
+        print(f"------- REPETITION LOOP Nr. {reploop} --------")
+
+        # Determine Sweep Direction
+        is_backward = (reploop % 2 != 0)
     
-    if not is_backward:
-        U_list = np.arange(U_start,U_end+U_step,U_step) # Forward
-    else:
-        U_list = np.arange(U_start,U_end+U_step,U_step)[::-1] # Backward
+        if not is_backward:
+            U_list = np.arange(U_start,U_end+U_step,U_step) # Forward
+        else:
+            U_list = np.arange(U_start,U_end+U_step,U_step)[::-1] # Backward
 
-    if np.abs(U_start-U_end) <= 1e-7: U_list = (U_start,)
+        if np.abs(U_start-U_end) <= 1e-7: U_list = (U_start,)
 
-    z_list = []
-    nc_list = []
+        z_list = []
+        nc_list = []
 
-    # Loop over interaction strengths
-    for U in U_list:
+        # Loop over interaction strengths
+        for U in U_list:
 
-      if is_backward: mu_list = np.arange(mu_start,mu_end,mu_step)
-      else: mu_list = np.arange(mu_start,mu_end,mu_step)[::-1]
-      if np.abs(mu_start-mu_end) <= 1e-7: mu_list = (mu_start,)
+          if is_backward: mu_list = np.arange(mu_start,mu_end,mu_step)
+          else: mu_list = np.arange(mu_start,mu_end,mu_step)[::-1]
+          if np.abs(mu_start-mu_end) <= 1e-7: mu_list = (mu_start,)
 
-      for mu in mu_list:
-            calc_nqspo = (nphysorb + nghost) // 2
+          for mu in mu_list:
+                calc_nqspo = (nphysorb + nghost) // 2
 
-            # Initial Guess Strategy
-            if icnt==0 or nghost==0:
-              if is_backward and nghost>0 and np.abs(ntot-0.5)<1e-7:
-                # Mott insulator guess (generalized for arbitrary calc_nqspo)
-                if calc_nqspo == 1:
-                    rinit = np.zeros(1)
-                    lambdainit = np.zeros(1)
+                # Initial Guess Strategy
+                if icnt==0 or nghost==0:
+                  if is_backward and nghost>0 and np.abs(ntot-0.5)<1e-7:
+                    # Mott insulator guess (generalized for arbitrary calc_nqspo)
+                    if calc_nqspo == 1:
+                        rinit = np.zeros(1)
+                        lambdainit = np.zeros(1)
+                    else:
+                        rinit = np.zeros(calc_nqspo)
+                        # 0.95 の重みをゴースト軌道数（calc_nqspo - 1）で等分して物理的に正規化
+                        weight_per_ghost = 0.95 / (calc_nqspo - 1)
+                        rinit[1:] = np.sqrt(weight_per_ghost)
+                        nlambda = calc_nqspo * (calc_nqspo + 1) // 2
+                        lambdainit = np.zeros(nlambda)
+                        if nlambda > 2:
+                            lambdainit[1] =  U/2
+                            lambdainit[2] = -U/2
+                  else:
+                    # Metallic guess
+                    rinit = np.zeros(calc_nqspo); rinit[0] = 1.0
+                    lambdainit = np.zeros(calc_nqspo * (calc_nqspo + 1) // 2)
+                    muinit = 0.0
+
+                  if lmu_sweep: muinit = np.copy(mu)
                 else:
-                    rinit = np.zeros(calc_nqspo)
-                    # 0.95 の重みをゴースト軌道数（calc_nqspo - 1）で等分して物理的に正規化
-                    weight_per_ghost = 0.95 / (calc_nqspo - 1)
-                    rinit[1:] = np.sqrt(weight_per_ghost)
-                    nlambda = calc_nqspo * (calc_nqspo + 1) // 2
-                    lambdainit = np.zeros(nlambda)
-                    if nlambda > 2:
-                        lambdainit[1] =  U/2
-                        lambdainit[2] = -U/2
-              else:
-                # Metallic guess
-                rinit = np.zeros(calc_nqspo); rinit[0] = 1.0
-                lambdainit = np.zeros(calc_nqspo * (calc_nqspo + 1) // 2)
-                muinit = 0.0
+                  # Adiabatic switching (Use previous result)
+                  rinit = GA_list[icnt-1].R[:,0]
+                  lambdainit = cr.inverse_realHcombination(GA_list[icnt-1].Lmbda,GA_list[icnt-1].H_list)
+                  if not lmu_sweep: muinit = (GA_list[icnt-1].mu)
 
-              if lmu_sweep: muinit = np.copy(mu)
-            else:
-              # Adiabatic switching (Use previous result)
-              rinit = GA_list[icnt-1].R[:,0]
-              lambdainit = cr.inverse_realHcombination(GA_list[icnt-1].Lmbda,GA_list[icnt-1].H_list)
-              if not lmu_sweep: muinit = (GA_list[icnt-1].mu)
-
-            # Log
-            if not lmu_sweep:
-              print ("Starting calculation for U, N = ",str("{:.4f}".format(U)),str("{:.4f}".format(ntot)))
-            else:
-              print ("Starting calculation for U, mu = ",str("{:.4f}".format(U)),str("{:.4f}".format(muinit)))
+                # Log
+                if not lmu_sweep:
+                  print ("Starting calculation for U, N = ",str("{:.4f}".format(U)),str("{:.4f}".format(ntot)))
+                else:
+                  print ("Starting calculation for U, mu = ",str("{:.4f}".format(U)),str("{:.4f}".format(muinit)))
  
-            # Initialize GA object
-            GA_list.append(GA(U,nghost,nphysorb,n=ntot,T=T,lcanonical=True,tolconv=1e-3, eks=eks))
-            if icnt>0: GA_list[icnt].mu = GA_list[icnt-1].mu  
-            if lmu_sweep: muinit = mu
+                # Initialize GA object
+                GA_list.append(GA(U,nghost,nphysorb,n=ntot,T=T,lcanonical=True,tolconv=1e-3, eks=eks))
+                if icnt>0: GA_list[icnt].mu = GA_list[icnt-1].mu  
+                if lmu_sweep: muinit = mu
 
-            # Solve GA equations
-            GA_list[icnt].optimize_selfc_new(rinit,lambdainit,muinit)
+                # Solve GA equations
+                GA_list[icnt].optimize_selfc_new(rinit,lambdainit,muinit)
 
-            z_list.append(GA_list[icnt].Z)
-            nc_list.append(GA_list[icnt].imp_solver.nc)
+                z_list.append(GA_list[icnt].Z)
+                nc_list.append(GA_list[icnt].imp_solver.nc)
 
-            # Results
-            print ("Final Z:", GA_list[icnt].Z)
+                # Results
+                print ("Final Z:", GA_list[icnt].Z)
             
-            if not lmu_sweep:
-              if GA_list[icnt].lconverged_root:
-                  print ("GA Converged for U, N = ",str("{:.4f}".format(U)),str("{:.4f}\n".format(ntot)))
-              else:
-                  print ("GA NOT converged for U, N = ",str("{:.4f}".format(U)),str("{:.4f}\n".format(ntot)))
+                if not lmu_sweep:
+                  if GA_list[icnt].lconverged_root:
+                      print ("GA Converged for U, N = ",str("{:.4f}".format(U)),str("{:.4f}\n".format(ntot)))
+                  else:
+                      print ("GA NOT converged for U, N = ",str("{:.4f}".format(U)),str("{:.4f}\n".format(ntot)))
             
-            icnt += 1
+                icnt += 1
 
-    # --- プロット (ループの内側で実行することで、往路・復路の両方を描画) ---
-    label_str = "U降順:絶縁体→金属" if is_backward else "U昇順:金属→絶縁体"
-    plt.plot(U_list, z_list, marker='o', markersize=4, label=f"{label_str}")
-
-
-# --- ★修正点: 全ループ終了後に理論カーブを描画して show() する ---
-
-# Brinkman-Rice Theory (Bethe Lattice, Bandwidth W=2, D=1)
-
-D_code = 1.0
-Uc_exact2 = 2.94
-Uc_exact1 = 2.39
-
-# Theoretical curve: Z = 1 - (U/Uc)^2
-U_theory1 = np.linspace(0, Uc_exact1, 100)
-U_theory2 = np.linspace(0, Uc_exact2, 100)
-#Z_theory1 = 1.0 - (U_theory1 / Uc_exact1)**2 #
-#Z_theory2 = 1.0 - (U_theory2 / Uc_exact2)**2
+        # --- プロット (ループの内側で実行することで、往路・復路の両方を描画) ---
+        label_str = "U降順:絶縁体→金属" if is_backward else "U昇順:金属→絶縁体"
+        plt.plot(U_list, z_list, marker='o', markersize=4, label=f"{label_str}")
 
 
-# Plot theory curve 
-# plt.plot(U_theory1,Z_theory1, 'k--', linewidth=2, label=f'Brinkman-Rice Theory ($U_c \\approx {Uc_exact1:.2f}$)')
-# plt.plot(U_theory2, Z_theory2, 'k--', linewidth=2, label=f'Brinkman-Rice Theory ($U_c \\approx {Uc_exact2:.2f}$)')
-plt.axvline(x=Uc_exact1, color='blue', linestyle=':', label='DMFTによる計算値$U_{c1}$')
-plt.axvline(x=Uc_exact2, color='red', linestyle=':', label='DMFTによる計算値$U_{c2}$')
-# Graph Formatting
-plt.xlabel("U")
-plt.ylabel("純粒子重み $Z$")
-plt.title("半バンド幅 $D$ ($D=1$),Bethe格子")
-plt.xlim(0, 5.0)
-plt.ylim(-0.05, 1.05)
-plt.legend()
-plt.grid(True)
-plt.show()
+    # --- ★修正点: 全ループ終了後に理論カーブを描画して show() する ---
+
+    # Brinkman-Rice Theory (Bethe Lattice, Bandwidth W=2, D=1)
+
+    D_code = 1.0
+    Uc_exact2 = 2.94
+    Uc_exact1 = 2.39
+
+    # Theoretical curve: Z = 1 - (U/Uc)^2
+    U_theory1 = np.linspace(0, Uc_exact1, 100)
+    U_theory2 = np.linspace(0, Uc_exact2, 100)
+    #Z_theory1 = 1.0 - (U_theory1 / Uc_exact1)**2 #
+    #Z_theory2 = 1.0 - (U_theory2 / Uc_exact2)**2
+
+
+    # Plot theory curve 
+    # plt.plot(U_theory1,Z_theory1, 'k--', linewidth=2, label=f'Brinkman-Rice Theory ($U_c \\approx {Uc_exact1:.2f}$)')
+    # plt.plot(U_theory2, Z_theory2, 'k--', linewidth=2, label=f'Brinkman-Rice Theory ($U_c \\approx {Uc_exact2:.2f}$)')
+    plt.axvline(x=Uc_exact1, color='blue', linestyle=':', label='DMFTによる計算値$U_{c1}$')
+    plt.axvline(x=Uc_exact2, color='red', linestyle=':', label='DMFTによる計算値$U_{c2}$')
+    # Graph Formatting
+    plt.xlabel("U")
+    plt.ylabel("純粒子重み $Z$")
+    plt.title("半バンド幅 $D$ ($D=1$),Bethe格子")
+    plt.xlim(0, 5.0)
+    plt.ylim(-0.05, 1.05)
+    plt.legend()
+    plt.grid(True)
+    plt.show()

@@ -16,11 +16,18 @@ import td_gga_solver as td
 # ============================================================
 U_initial = 2.0
 nphysorb  = 2
-nghost    = 2
+nghost    = 4   # ga_mainfin.py スタンドアロンと同じ設定
 
 print(f"[1] 静的 gGA 計算 (U = {U_initial}) を開始...")
 ga_obj = ga.GA(U=U_initial, nghost=nghost, nphysorb=nphysorb, n=0.5)
-ga_obj.optimize_selfc_new(rinit=None, lambdainit=None, muinit=None)
+
+# 初期値: 金属相 (metallic guess)
+nqspo = (nphysorb + nghost) // 2
+rinit_0      = np.zeros(nqspo); rinit_0[0] = 1.0
+lambdainit_0 = np.zeros(nqspo * (nqspo + 1) // 2)
+muinit_0     = 0.0
+
+ga_obj.optimize_selfc_new(rinit=rinit_0, lambdainit=lambdainit_0, muinit=muinit_0)
 
 if not ga_obj.lconv:
     print("  警告: 静的計算が収束していません。結果を確認してください。")
@@ -80,37 +87,46 @@ for a_loop in range(B):      # 浴軌道ループインデックス (0 .. B-1)
 print("  op_cb, op_bb の構築完了。")
 
 # ============================================================
-# 4. H_loc_final の構築 (Fock 空間, U_final へのクエンチ)
+# 4. H_emb_0_fock の構築 (Fock 空間, U_final へのクエンチ)
 # ============================================================
-# NOTE: compute_derivatives 内で dPhi_dt = -1j * (H_emb @ Phi) を実行するため、
-#       H_emb の次元は Phi と同じ dim_Phi × dim_Phi でなければならない。
-#       ここでは一体行列 (2B × 2B) を第二量子化で Fock 空間へ変換する:
-#         H_fock = Σ_{ij} h_1body[i,j] * c†_i c_j  (半充填セクター)
-#
 U_final = 4.0
-print(f"[4] クエンチ後ハミルトニアン (U = {U_final}) を構築中...")
+print(f"[4] クエンチ後ハミルトニアン (U_f = {U_final}) の固定部分を構築中...")
 
-# 一体行列 h_1body (2B × 2B) を構築
-#   物理ブロック (0:B, 0:B): on-site エネルギー -U_final/2
-#   浴ブロック  (B:2B, B:2B): 平衡状態の Lambda (浴軌道エネルギー)
+# 1体行列 h_1body (2B × 2B) を構築
 h_1body = np.zeros((2 * B, 2 * B), dtype=complex)
-np.fill_diagonal(h_1body[:B, :B], -U_final / 2.0)          # 物理ブロック
-h_1body[B:, B:] = np.diag(np.diag(ga_obj.Lmbdac))          # 浴ブロック (平衡 Lambda 対角)
+
+# (1) 物理ブロック (0:B, 0:B): on-site エネルギー -U_final/2
+np.fill_diagonal(h_1body[:B, :B], -U_final / 2.0)
+
+# (2) 浴ブロック (B:2B, B:2B):
+# ※注意: Λ^c はここに入れない（ソルバー内で動的に足すため 0 のまま）
+
+# (3) D ブロック (物理-浴の混成): Frozen-D 近似のため初期値のまま固定
+h_1body[:B, B:] = D_guess_0
+h_1body[B:, :B] = D_guess_0.conj().T
 
 # 一体行列を Fock 空間表現に変換
+# H_fock = Σ_{ij} h_1body[i,j] * c†_j c_i  (半充填セクター)
 import scipy.sparse as sp
 H_loc_fock = sp.csr_matrix((dim_Phi, dim_Phi), dtype=complex)
 for i in range(2 * B):
-    ann_i = FH_list[i].getH()          # c_i (全Fock空間, 消滅)
+    ann_i = FH_list[i].getH()
     for j in range(2 * B):
         if abs(h_1body[i, j]) < 1e-14:
             continue
-        # c†_j c_i の半充填セクター行列
         op_ij = FH_list[j].dot(ann_i)
         H_loc_fock += h_1body[i, j] * op_ij[ioff:iend, ioff:iend]
 
-H_loc_final = H_loc_fock.toarray()  # (dim_Phi, dim_Phi) dense 行列
-print(f"  H_loc_final の形状: {H_loc_final.shape}")
+# (4) 2体相互作用 (Hubbard U) の追加
+# U2loc は build_Hemb 時に U_initial スケールで保存済み → U_final にスケール変換
+# ファイル名: "U2loc-imp{nr}{type}.npz" (ed_solver.py の save_npz 命名規則に従う)
+U2loc_sparse = sp.load_npz(f"U2loc-imp{ed.impurity_nr}{ed.impurity_type}.npz")
+H_loc_fock += (U_final / U_initial) * U2loc_sparse   # 既に hsize_half × hsize_half
+
+H_emb_0_fock = H_loc_fock.toarray()   # (dim_Phi, dim_Phi) dense 行列
+H_phys_1body = h_1body[:B, :B].copy() # (B, B) 物理ブロック（h_qp の 0 次項用）
+
+print(f"  H_emb_0_fock の形状: {H_emb_0_fock.shape}")
 
 # ============================================================
 # 5. TD-gGA ダイナミクスの実行
@@ -120,8 +136,8 @@ print("[5] TD-gGA ダイナミクスを実行中...")
 physics_params = {
     'dim_Phi'       : dim_Phi,
     'B'             : B,
-    'H_loc_final'   : H_loc_final,    # (dim_Phi, dim_Phi) Fock 空間表現
-    'D_guess_0'     : D_guess_0,       # (B, B) Frozen-D 初期値
+    'H_emb_0_fock'  : H_emb_0_fock,   # Λ^c 以外を含む多体ハミルトニアン (dim_Phi, dim_Phi)
+    'H_phys_1body'  : H_phys_1body,   # h_qp の 0 次項用 1 体物理ブロック (B, B)
     'op_cb'         : op_cb,           # (B, B, dim_Phi, dim_Phi) c†_al b_a
     'op_bb'         : op_bb,           # (B, B, dim_Phi, dim_Phi) b†_b  b_a
 }
@@ -129,7 +145,7 @@ physics_params = {
 t_max = 10.0
 dt    = 0.05
 
-sol = td.run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params)
+sol = td.run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, atol=1e-10)
 
 if sol.success:
     print(f"  ODE 求解成功。ステップ数: {len(sol.t)}")
