@@ -152,6 +152,12 @@ if sol.success:
 else:
     print(f"  警告: ODE 求解に問題が発生しました。メッセージ: {sol.message}")
 
+# ODE 結果を保存（replot.py で即座に再プロット可能にする）
+np.savez('td_gga_result.npz', t=sol.t, y=sol.y, dim_Phi=dim_Phi, B=B,
+         U_initial=U_initial, U_final=U_final,
+         H_emb_0=H_emb_0_fock, H_phys=H_phys_1body,
+         op_cb=op_cb)
+
 # ============================================================
 # 6. 物理量の計算とプロット
 # ============================================================
@@ -175,7 +181,8 @@ axes[0].set_ylabel(r'$\langle\Phi(t)|\Phi(t)\rangle$')
 axes[0].set_title(f'TD-gGA クエンチダイナミクス  '
                   f'$U_i = {U_initial}$  →  $U_f = {U_final}$')
 axes[0].legend()
-axes[0].set_ylim([0.8, 1.2])
+norm_dev = max(abs(norms - 1.0).max() * 1.5, 1e-4)
+axes[0].set_ylim([1.0 - norm_dev, 1.0 + norm_dev])
 
 # --- プロット 2: 準粒子占有数の時間変化 ---
 for orb in range(B):
