@@ -126,6 +126,12 @@ H_loc_fock += (U_final / U_initial) * U2loc_sparse   # 既に hsize_half × hsiz
 H_emb_0_fock = H_loc_fock.toarray()   # (dim_Phi, dim_Phi) dense 行列
 H_phys_1body = h_1body[:B, :B].copy() # (B, B) 物理ブロック（h_qp の 0 次項用）
 
+# 二重占有数演算子 d = ⟨Φ|n_↑ n_↓|Φ⟩
+# 物理軌道: FH_list[0]=c†_↑, FH_list[1]=c†_↓  (nphysorb=2, spin-up=0, spin-down=1)
+n_up_full   = FH_list[0].dot(FH_list[0].getH())   # c†_↑ c_↑
+n_down_full = FH_list[1].dot(FH_list[1].getH())   # c†_↓ c_↓
+op_docc = n_up_full.dot(n_down_full)[ioff:iend, ioff:iend].toarray()
+
 print(f"  H_emb_0_fock の形状: {H_emb_0_fock.shape}")
 
 # ============================================================
@@ -152,44 +158,65 @@ if sol.success:
 else:
     print(f"  警告: ODE 求解に問題が発生しました。メッセージ: {sol.message}")
 
-# ODE 結果を保存（replot.py で即座に再プロット可能にする）
-np.savez('td_gga_result.npz', t=sol.t, y=sol.y, dim_Phi=dim_Phi, B=B,
-         U_initial=U_initial, U_final=U_final,
-         H_emb_0=H_emb_0_fock, H_phys=H_phys_1body,
-         op_cb=op_cb)
-
 # ============================================================
 # 6. 物理量の計算とプロット
 # ============================================================
 print("[6] 物理量を計算中...")
 
 nsteps = len(sol.t)
-norms       = np.zeros(nsteps)   # ||Phi(t)||²  (保存則の確認)
-occupations = np.zeros((B, nsteps))  # 準粒子占有数 n_aa(t) の対角成分
+norms       = np.zeros(nsteps)
+occupations = np.zeros((B, nsteps))
+docc        = np.zeros(nsteps)   # 二重占有数 d(t) = ⟨Φ|n_↑ n_↓|Φ⟩
+Z_t         = np.zeros(nsteps)   # 準粒子重み Z(t) = (R R†)_{00}
+
+I = np.eye(B)
+from scipy import linalg as LA
 
 for k in range(nsteps):
     Phi_t, n_ab_t = td.unpack_state(sol.y[:, k], dim_Phi, B)
-    norms[k]         = np.real(Phi_t.conj() @ Phi_t)
+    norms[k]          = np.real(Phi_t.conj() @ Phi_t)
     occupations[:, k] = np.real(np.diag(n_ab_t))
+    docc[k]           = np.real(Phi_t.conj() @ op_docc @ Phi_t)
 
-fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    # R 行列の計算（td_gga_solver.py の compute_derivatives と同じロジック）
+    Delta    = (n_ab_t + n_ab_t.conj().T) / 2.0
+    fdaggerc = np.array([[Phi_t.conj() @ op_cb[a, al] @ Phi_t
+                          for al in range(B)] for a in range(B)])
+    sqrt_D1mD = LA.sqrtm(Delta @ (I - Delta))
+    R = LA.pinv(sqrt_D1mD, rcond=1e-6) @ fdaggerc
+    Z_t[k] = min(np.real((R @ R.conj().T)[0, 0]), 1.0)  # 物理範囲 [0,1] にクリップ
 
-# --- プロット 1: ノルムの保存 (数値安定性の確認) ---
+# 数値を npz に保存（replot.py で即座に再プロット可能）
+np.savez('td_gga_result.npz',
+         t=sol.t, norms=norms, occupations=occupations, docc=docc, Z=Z_t,
+         U_initial=U_initial, U_final=U_final)
+
+fig, axes = plt.subplots(4, 1, figsize=(8, 10), sharex=True)
+
+# --- プロット 1: ノルムの保存 ---
 axes[0].plot(sol.t, norms, 'k-', linewidth=1.5)
 axes[0].axhline(1.0, color='gray', linestyle='--', linewidth=0.8, label='理想値 = 1')
 axes[0].set_ylabel(r'$\langle\Phi(t)|\Phi(t)\rangle$')
-axes[0].set_title(f'TD-gGA クエンチダイナミクス  '
-                  f'$U_i = {U_initial}$  →  $U_f = {U_final}$')
+axes[0].set_title(f'TD-gGA クエンチダイナミクス  $U_i={U_initial}$ → $U_f={U_final}$')
 axes[0].legend()
 norm_dev = max(abs(norms - 1.0).max() * 1.5, 1e-4)
 axes[0].set_ylim([1.0 - norm_dev, 1.0 + norm_dev])
 
-# --- プロット 2: 準粒子占有数の時間変化 ---
+# --- プロット 2: 準粒子占有数 ---
 for orb in range(B):
     axes[1].plot(sol.t, occupations[orb, :], label=f'軌道 {orb}')
-axes[1].set_xlabel('時刻 $t$')
 axes[1].set_ylabel(r'$n_{aa}(t)$')
 axes[1].legend()
+
+# --- プロット 3: 二重占有数 ---
+axes[2].plot(sol.t, docc, 'g-', linewidth=1.5)
+axes[2].set_ylabel(r'$d(t) = \langle n_\uparrow n_\downarrow \rangle$')
+axes[2].set_ylim(bottom=0)
+
+# --- プロット 4: 準粒子重み ---
+axes[3].plot(sol.t, Z_t, 'm-', linewidth=1.5)
+axes[3].set_ylabel(r'$Z(t)$')
+axes[3].set_ylim([0.0, 1.0])
 
 plt.tight_layout()
 plt.savefig('quench_dynamics.png', dpi=150)
