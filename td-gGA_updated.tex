@@ -1,0 +1,205 @@
+\documentclass[a4paper,11pt]{ltjarticle}
+\usepackage{amsmath, amssymb, bm}
+\usepackage{physics}
+\usepackage[margin=2cm]{geometry}
+
+\title{時間依存ゴースト・グッツウィラー近似 (TD-gGA) の定式化と導出}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{平衡状態のgGAラグランジアン (Lanataの一般論)}
+平衡状態におけるゴースト・グッツウィラー近似(gGA)では、系の基底状態エネルギーを最小化するために、補助空間の準粒子状態 $\ket{\Psi_0}$ と各サイト $i$ の埋め込み状態 $\ket{\Phi_i}$ を最適化します。この変分問題は、以下のラグランジアン $\mathcal{L}_{\text{eq}}$ の停留点（サドルポイント）を求める問題に帰着します。
+
+\begin{align}
+\mathcal{L}_{\text{eq}} &= \mel{\Psi_0}{\hat{H}_{qp}[\mathcal{R}, \Lambda]}{\Psi_0} + E(1 - \braket{\Psi_0}{\Psi_0}) \notag \\
+&\quad + \sum_{i=1}^{\mathcal{N}} \left[ \mel{\Phi_i}{\hat{H}_{emb}^i[\mathcal{D}_i, \Lambda_i^c]}{\Phi_i} + E_i^c(1 - \braket{\Phi_i}{\Phi_i}) \right] \notag \\
+&\quad - \sum_{i=1}^{\mathcal{N}} \left[ \sum_{a,b} (\Lambda_{i,ab} + \Lambda_{i,ab}^c)\Delta_{i,ab} \right. \notag \\
+&\quad \left. + \sum_{c,a,\alpha} \left( \mathcal{D}_{i,a\alpha} \mathcal{R}_{i,c\alpha} [\Delta_i(1-\Delta_i)]_{ca}^{\frac{1}{2}} + c.c. \right) \right]
+\label{eq:L_eq}
+\end{align}
+ここで、$E, E_i^c$ は状態のノルム（規格化）を保存するためのラグランジュ乗数であり、$\Lambda, \Lambda^c, \mathcal{D}$ はGutzwiller制約条件を満たすためのラグランジュ乗数です。
+
+\section{ディラック・フレンケルの変分原理と時間依存ラグランジアン}
+系が非平衡ダイナミクスを示す場合（例：相互作用クエンチや外部電磁場がある場合）、時間依存シュレーディンガー方程式の厳密な時間発展を変分空間内に制限して近似的に解く必要があります。これにはディラック・フレンケル（Dirac-Frenkel）の変分原理を用います。
+
+作用積分 $\mathcal{S} = \int \mathcal{L}(t) dt$ の被積分関数となる時間依存ラグランジアン $\mathcal{L}(t)$ を構築するため、式(\ref{eq:L_eq})に対して以下の置き換えを行います。
+\begin{enumerate}
+    \item エネルギー期待値 $\mel{\Psi}{\hat{H}}{\Psi}$ を、時間発展演算子を含む $\mel{\Psi}{i\partial_t - \hat{H}}{\Psi}$ に置き換える。
+    \item ユニタリな時間発展 $i\partial_t$ は状態のノルムを自動的に保存するため、規格化のためのラグランジュ乗数項 ($E, E_i^c$) を削除する。
+    \item 各変分パラメータと状態ベクトルを時間 $t$ の関数とする。
+\end{enumerate}
+
+これにより、TD-gGAの時間依存ラグランジアンは次のように定義されます。
+\begin{align}
+\mathcal{L}(t) &= \mel{\Psi_0(t)}{i\partial_t - \hat{H}_{qp}(t)}{\Psi_0(t)} + \sum_{i=1}^{\mathcal{N}} \mel{\Phi_i(t)}{i\partial_t - \hat{H}_{emb}^i(t)}{\Phi_i(t)} \notag \\
+&\quad + \sum_{i=1}^{\mathcal{N}} \left[ \sum_{a,b} (\Lambda_{i,ab}(t) + \Lambda_{i,ab}^c(t))\Delta_{i,ab}(t) \right. \notag \\
+&\quad \left. + \sum_{c,a,\alpha} \left( \mathcal{D}_{i,a\alpha}(t) \mathcal{R}_{i,c\alpha}(t) [\Delta_i(t)(1-\Delta_i(t))]_{ca}^{\frac{1}{2}} + c.c. \right) \right]
+\label{eq:L_td}
+\end{align}
+
+\section{運動方程式の導出（サドルポイント条件）}
+作用積分 $\mathcal{S} = \int \mathcal{L}(t) dt$ を極値化するため、各変数に対する変分 $\delta \mathcal{S} = 0$ を計算します。
+
+\subsection{状態ベクトルに関する変分}
+$\bra{\Psi_0(t)}$ および $\bra{\Phi_i(t)}$ で変分をとると、それぞれ対応するハミルトニアンによる時間依存シュレーディンガー方程式が得られます。
+\begin{align}
+\frac{\delta \mathcal{S}}{\delta \bra{\Psi_0(t)}} = 0 \quad &\Rightarrow \quad i\partial_t \ket{\Psi_0(t)} = \hat{H}_{qp}(t) \ket{\Psi_0(t)} \label{eq:eom_psi} \\
+\frac{\delta \mathcal{S}}{\delta \bra{\Phi_i(t)}} = 0 \quad &\Rightarrow \quad i\partial_t \ket{\Phi_i(t)} = \hat{H}_{emb}^i(t) \ket{\Phi_i(t)} \label{eq:eom_phi}
+\end{align}
+
+\subsection{ラグランジュ乗数に関する変分}
+次に、制約条件のラグランジュ乗数 $\Lambda_{i,ab}(t), \Lambda_{i,ab}^c(t), \mathcal{D}_{i,a\alpha}(t)$ などで変分をとります。ハミルトニアン $\hat{H}_{qp}$ と $\hat{H}_{emb}^i$ はこれらの変数に対して線形であるため、得られる条件式は時間微分のない代数方程式となります。
+
+\begin{align}
+\frac{\delta \mathcal{S}}{\delta \Lambda_{i,ab}(t)} = 0 \quad &\Rightarrow \quad \Delta_{i,ab}(t) = \mel{\Psi_0(t)}{f_{ia}^\dagger f_{ib}}{\Psi_0(t)} \\
+\frac{\delta \mathcal{S}}{\delta \Lambda_{i,ab}^c(t)} = 0 \quad &\Rightarrow \quad \Delta_{i,ab}(t) = \mel{\Phi_i(t)}{b_{ib}^\dagger b_{ia}}{\Phi_i(t)} \\
+\frac{\delta \mathcal{S}}{\delta \mathcal{D}_{i,a\alpha}(t)} = 0 \quad &\Rightarrow \quad \mel{\Phi_i(t)}{c_{i\alpha}^\dagger b_{ia}}{\Phi_i(t)} = \sum_{c} [\Delta_i(t)(1-\Delta_i(t))]_{ac}^{\frac{1}{2}} \mathcal{R}_{i,c\alpha}(t)
+\end{align}
+驚くべきことに、これらの代数的な制約方程式は、各瞬間 $t$ において平衡状態のgGAと全く同じ形をしています。
+
+\section{一般化されたTD-gGAのラグランジュ方程式群 (Lanata記法準拠)}
+無限次元極限に依存しない、一般的な多軌道・有限格子系（サイト $i, j$、軌道 $\alpha, \beta$、ゴースト軌道 $a, b$）に対するTD-gGAのサドルポイント条件を記述する。これはLanataの平衡状態の方程式(89)-(95)をそのまま時間領域へ拡張したものである。
+
+\subsection{1. 時間発展方程式（微分方程式）}
+状態ベクトルの変分から、埋め込み状態と準粒子状態の時間発展方程式が導出される。
+
+\paragraph{埋め込み状態の時間発展}
+各サイト $i$ の局所的なゴースト自由度を含む埋め込み状態は、以下の微分方程式に従う。
+\begin{align}
+    i\partial_t \ket{\Phi_i(t)} &= \hat{H}_{emb}^i(t) \ket{\Phi_i(t)} \label{eq:td_phi_pure}
+\end{align}
+
+\paragraph{準粒子状態の時間発展}
+系全体の補助フェルミオンからなるスレイター行列式（準粒子状態）は、以下の微分方程式に従う。
+\begin{align}
+    i\partial_t \ket{\Psi_0(t)} &= \hat{H}_{qp}(t) \ket{\Psi_0(t)} \label{eq:td_psi_pure}
+\end{align}
+
+\subsection{2. 自己無撞着条件（代数方程式）}
+各時刻 $t$ において、変分パラメータは以下の4つの代数方程式をサイトごとに満たさなければならない。
+
+\paragraph{条件1: $\Delta_i(t)$ の補助粒子からの定義}
+\begin{align}
+    [\Delta_i]_{ab}(t) &= \mel{\Psi_0(t)}{f_{ia}^\dagger f_{ib}}{\Psi_0(t)} = \rho_{ii, ab}(t) \label{eq:td_delta_psi}
+\end{align}
+※ 論文にあった $\int d\omega D_0(\omega)$ の積分は、一般の格子系では「系全体の密度行列 $\bm{\rho}(t)$ のサイト $i$ の対角ブロックを抽出する」というこの操作に置き換わる。
+
+\paragraph{条件2: $\Delta_i(t)$ の埋め込み状態からの定義}
+\begin{align}
+    [\Delta_i]_{ab}(t) &= \mel{\Phi_i(t)}{b_{ib}^\dagger b_{ia}}{\Phi_i(t)} \label{eq:td_delta_phi}
+\end{align}
+
+\paragraph{条件3: $\mathcal{R}_i(t)$ の決定方程式}
+\begin{align}
+    \mel{\Phi_i(t)}{c_{i\alpha}^\dagger b_{ia}}{\Phi_i(t)} &= \sum_{c=1}^{B\nu_i} [\Delta_i(t)(1-\Delta_i(t))]^{\frac{1}{2}}_{ac} [\mathcal{R}_i]_{c\alpha}(t) \label{eq:td_R_gen}
+\end{align}
+
+\paragraph{条件4: $\Lambda_i^c(t)$ の決定方程式}
+\begin{align}
+    [\Lambda_i^c]_{ab}(t) &= - [\Lambda_i]_{ab}(t) - \sum_{c, \alpha} \frac{\partial}{\partial [\Delta_i]_{ab}} \left( [\Delta_i(t)(1-\Delta_i(t))]^{\frac{1}{2}}_{cb} [\mathcal{D}_i]_{b\alpha}(t) [\mathcal{R}_i]_{c\alpha}(t) + c.c. \right) \label{eq:td_lambda_gen}
+\end{align}
+
+\section{準粒子密度行列の運動方程式の導出（詳細）}
+巨大なスレイター行列式 $\ket{\Psi_0(t)}$ のシュレーディンガー方程式による時間発展を、計算コストの低い1粒子密度行列 $n_{ab}(t)$ の運動方程式へと変換する数学的なプロセスを詳細に示す。
+
+準粒子ハミルトニアン $\hat{H}_{qp}(t)$ は相互作用を含まない1体演算子であり、次のように一般化して書くことができる。
+\begin{align}
+    \hat{H}_{qp}(t) = \sum_{c,d} h_{cd}(t) f_c^\dagger f_d
+\end{align}
+ここで、$h_{cd}(t)$ はハミルトニアンの行列要素である。
+
+\subsection{ステップ1：密度行列の時間微分}
+1粒子密度行列の定義 $n_{ab}(t) = \mel{\Psi_0(t)}{f_a^\dagger f_b}{\Psi_0(t)}$ の両辺を時間 $t$ で微分する。ここに、シュレーディンガー方程式 $i\partial_t \ket{\Psi_0} = \hat{H}_{qp}\ket{\Psi_0}$ とそのエルミート共役 $-i\partial_t \bra{\Psi_0} = \bra{\Psi_0}\hat{H}_{qp}$ を代入する。
+\begin{align}
+    i\partial_t n_{ab}(t) &= i (\partial_t \bra{\Psi_0}) f_a^\dagger f_b \ket{\Psi_0} + i \bra{\Psi_0} f_a^\dagger f_b (\partial_t \ket{\Psi_0}) \notag \\
+    &= -\bra{\Psi_0} \hat{H}_{qp} f_a^\dagger f_b \ket{\Psi_0} + \bra{\Psi_0} f_a^\dagger f_b \hat{H}_{qp} \ket{\Psi_0} \notag \\
+    &= \mel{\Psi_0}{\left[ f_a^\dagger f_b, \hat{H}_{qp} \right]}{\Psi_0}
+\end{align}
+これにより、ハイゼンベルクの運動方程式と同等の交換子の期待値に帰着する。
+
+\subsection{ステップ2：1体ハミルトニアンとの交換関係}
+次に、フェルミオンの反交換関係 $\{f_x, f_y^\dagger\} = \delta_{xy}$ と、公式 $[AB, CD] = A\{B,C\}D - C\{A,D\}B$ を用いて、演算子の交換子を計算する。
+\begin{align}
+    \left[ f_a^\dagger f_b, f_c^\dagger f_d \right] &= f_a^\dagger \{f_b, f_c^\dagger\} f_d - f_c^\dagger \{f_a^\dagger, f_d\} f_b \notag \\
+    &= \delta_{bc} f_a^\dagger f_d - \delta_{ad} f_c^\dagger f_b
+\end{align}
+これを $\hat{H}_{qp}(t)$ の定義に代入すると、クロネッカーのデルタによって和が簡約される。
+\begin{align}
+    \left[ f_a^\dagger f_b, \hat{H}_{qp}(t) \right] &= \sum_{c,d} h_{cd}(t) \left( \delta_{bc} f_a^\dagger f_d - \delta_{ad} f_c^\dagger f_b \right) \notag \\
+    &= \sum_{d} h_{bd}(t) f_a^\dagger f_d - \sum_{c} h_{ca}(t) f_c^\dagger f_b
+\end{align}
+
+\subsection{ステップ3：方程式の閉包}
+ステップ2で得られた演算子を再び $\bra{\Psi_0(t)} \dots \ket{\Psi_0(t)}$ で挟んで期待値をとる。これにより、再び密度行列 $n_{xy}$ の定義を用いることができる。
+\begin{align}
+    i\partial_t n_{ab}(t) &= \sum_{d} h_{bd}(t) \mel{\Psi_0}{f_a^\dagger f_d}{\Psi_0} - \sum_{c} h_{ca}(t) \mel{\Psi_0}{f_c^\dagger f_b}{\Psi_0} \notag \\
+    &= \sum_{c} \left( h_{bc}(t) n_{ac}(t) - h_{ca}(t) n_{cb}(t) \right) \label{eq:eom_density_derivation}
+\end{align}
+（※2行目ではダミーインデックス $d$ を $c$ に統一した。）
+
+式(\ref{eq:eom_density_derivation})は、行列の記法を用いれば $i\partial_t \bm{n} = [\bm{n}, \bm{h}^T]$ と等価である。gGAの枠組みにより、相互作用をすべて埋め込みハミルトニアン $\hat{H}_{emb}$ に分離し、$\hat{H}_{qp}$ を1体演算子に制限したことで、多体系のシュレーディンガー方程式を「密度行列のみで閉じた厳密な微分方程式」へと還元できたことが示された。
+
+\section{アルゴリズムの実装に向けた変形（密度行列の時間発展）}
+数値計算上、巨大な多体系スレイター行列式 $\ket{\Psi_0(t)}$ の時間発展（式\ref{eq:eom_psi}）を直接計算することは困難です。しかし、$\hat{H}_{qp}(t)$ は1体演算子であるため、1粒子密度行列 $n_{ab}(t) = \mel{\Psi_0(t)}{f_a^\dagger f_b}{\Psi_0(t)}$ の時間発展に完全に書き換えることができます。
+
+ハイゼンベルクの運動方程式 $i\partial_t \hat{n}_{ab} = [\hat{n}_{ab}, \hat{H}_{qp}(t)]$ を用いることで、式(\ref{eq:eom_psi})は次のような密度行列の非線形常微分方程式に帰着します。
+\begin{align}
+i\partial_t n_{ab}(t) &= \sum_c \left[ h_{qp, bc}(t) n_{ac}(t) - h_{qp, ca}(t) n_{cb}(t) \right]
+\label{eq:eom_density}
+\end{align}
+ここで、$h_{qp}(t)$ は準粒子ハミルトニアンの行列要素であり、行列 $\mathcal{R}(t)$ や $\Lambda(t)$ に依存します。
+
+結果として、TD-gGAの方程式系は、埋め込み状態の時間発展（式\ref{eq:eom_phi}）、密度行列の時間発展（式\ref{eq:eom_density}）、および各時刻での代数的な自己無撞着条件をまとめた、ルンゲ・クッタ法で数値積分可能な巨大な1階常微分方程式 $\partial_t \bm{Y}(t) = \bm{F}(\bm{Y}(t))$ として定式化されます。
+
+\section{非平衡ダイナミクスにおける特異性と数値的正則化}
+Lanataの公式に基づくTD-gGAの枠組みでは、繰り込み行列 $\mathcal{R}(t)$ を決定する方程式（式\ref{eq:td_R_gen}）から明らかなように、$\mathcal{R}(t)$ の計算において $\left[ \Delta(t)(1-\Delta(t)) \right]^{1/2}$ の逆行列が必要となります。具体的には、
+\begin{align}
+    [\mathcal{R}_i]_{c\alpha}(t) &= \sum_{a} \left[ \Delta_i(t)(1-\Delta_i(t)) \right]^{-1/2}_{ca} \mel{\Phi_i(t)}{c_{i\alpha}^\dagger b_{ia}}{\Phi_i(t)}
+\end{align}
+と書くことができます。このように、$\mathcal{R}$ の分母には $\Delta(1-\Delta)$ が現れます。
+
+相互作用クエンチによって系がモット絶縁体へと近づくダイナミクスを考えると、局在化が進行するにつれて密度行列 $\Delta$ の固有値は $0$ または $1$ へと漸近します。このとき、分母の $\Delta(1-\Delta)$ も $0$ に近づくため、ゼロ割りによる数値的な特異性（発散）が発生します。これが非平衡ダイナミクスにおけるシミュレーションの破綻を引き起こす主要な原因となります。
+
+実際のPythonコード (\texttt{td\_gga\_solver.py}) の実装では、この発散を回避しつつ物理的な反発力を維持するために、特異値分解を用いた正則化（カットオフ）を導入して $\mathcal{R}$ を計算しています。具体的には、標準的な逆行列計算ではなく、ムーア・ペンローズの擬似逆行列を計算する関数 \texttt{numpy.linalg.pinv} を用いており、その際にカットオフパラメータ \texttt{rcond=1e-10} を指定しています。数式として表現すると、以下のように特異値 $\sigma_k$ が微小な成分を切り捨てる正則化逆行列を適用しています。
+\begin{align}
+    \left[ \Delta(1-\Delta) \right]^{-1/2}_{\text{reg}} &= \sum_{\sigma_k > \varepsilon} \frac{1}{\sqrt{\sigma_k}} \ket{v_k}\bra{u_k} \quad (\varepsilon = 10^{-10})
+\end{align}
+これにより、物理的な状態変化に由来する発散を抑制し、長時間の安定な時間発展シミュレーションを可能にしています。
+
+\section{各物理量の定義と時間発展}
+本シミュレーションのコードにおいて、系のダイナミクスを追跡するために計算される主要な3つの物理量は、状態ベクトルや行列 $\mathcal{R}, \Delta$ を用いて以下のように定義されます。
+
+\subsection{状態のノルム（ユニタリ性の指標）}
+時間発展演算子はユニタリであるため、埋め込み状態 $\ket{\Phi(t)}$ のノルムは時間によらず保存されなければなりません。コード上では、ルンゲ・クッタ法による数値積分が安定して行われているか（ユニタリ性が破綻していないか）を確認する指標として、各ステップで以下のノルムが計算されます。
+\begin{align}
+    N(t) &= \braket{\Phi(t)}{\Phi(t)}
+\end{align}
+
+\subsection{二重占有数（モット絶縁体化の指標）}
+サイト上でスピン上向きと下向きの電子が同時に存在する確率を示す二重占有数 $d(t)$ は、モット転移の進行度を測る直接的な指標です。これは埋め込み状態 $\ket{\Phi(t)}$ を用いて次のように計算されます。
+\begin{align}
+    d(t) &= \mel{\Phi(t)}{n_{\uparrow} n_{\downarrow}}{\Phi(t)}
+\end{align}
+クエンチによって相互作用 $U$ が増大すると、クーロン反発によりこの二重占有数は減少します。
+
+\subsection{準粒子重み（系の金属具合の指標）}
+系の金属状態としてのコヒーレンスを示す準粒子重み $Z(t)$ は、繰り込み行列 $\mathcal{R}(t)$ を用いて以下のように定義されます。
+\begin{align}
+    Z(t) &= \left( \mathcal{R}(t)\mathcal{R}^\dagger(t) \right)_{0,0}
+\end{align}
+モット絶縁体極限では $Z \to 0$ となります。一方で、前述のゼロ割りによる特異性の影響で、数値的に $\mathcal{R}$ の要素が過大評価され、$Z(t)$ が物理的上限である $1.0$ を超えてしまう問題が起こり得ます。これを防ぐため、コード上では計算された値に対して物理的な上限でクリッピングを施す工夫がなされています。
+\begin{align}
+    Z_{\text{phys}}(t) &= \min\left( Z(t), 1.0 \right)
+\end{align}
+
+\section{有限サイズ効果とシミュレーション結果の物理的解釈}
+今回のシミュレーションでは、不純物サイトとそれに結合するゴースト軌道（浴、Bath）の総数が $B=3$ の設定で計算を行いました。この設定から得られたダイナミクスの結果には、いくつかの重要な物理的特徴が観察されます。
+
+まず、二重占有数 $d(t)$ の時間発展において、クエンチ後に一定の熱平衡値へと完全には減衰（熱化）せず、周期的なうなり（Beating）を繰り返す様子が確認されました。これは、結合している浴（Bath）のサイズが有限であることに起因します。無限の自由度を持つ真の熱浴への散逸とは異なり、有限個のゴースト軌道からなる浴では、不純物サイトから流出した電子の波が浴の境界で反射して戻ってくるため、このような「有限サイズ効果（量子リバイバル）」が顕著に表れます。
+
+さらに、モット絶縁体領域へのクエンチにおいて、静的な（平衡状態の）計算であれば準粒子重みは $Z=0$ になるはずのパラメータ領域に到達しても、非平衡ダイナミクス下では系に過剰なエネルギーが注入されているため、$Z(t)$ が完全に $0$ に落ちきりません。結果として、$Z(t)$ は $0$ 近傍で激しく振動する挙動を示します。これは、系が局在化（$Z \to 0$）に向かおうとする物理的な傾向と、前述の $\Delta(1-\Delta) \to 0$ に起因する数値的特異性の発現とが激しくせめぎ合っている状態を表しており、非平衡強相関ダイナミクス特有の非常に非自明な現象を捉えたものと総括できます。
+
+\end{document}
