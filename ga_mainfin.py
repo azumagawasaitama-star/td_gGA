@@ -916,7 +916,7 @@ if __name__ == "__main__":
 
     ######### Hamiltonan settings #########
     nphysorb    = 2                 
-    nghost      = 4                 
+    nghost      = 8                 
     shift_list  = (-1.0,)            
     V           = 1.0               
     alpha       = 0.0               

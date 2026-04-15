@@ -103,7 +103,6 @@ class TDgGADynamics:
         dY/dt を反復ソルバーなしで直接計算して返す。
         """
         B = self.B
-        I = np.eye(B)
 
         # 1. 1次元実数配列 Y_flat → 複素 Phi, n_ab
         Phi, n_ab = unpack_state(Y_flat, self.dim_Phi, B)
@@ -111,13 +110,18 @@ class TDgGADynamics:
         # a. 数値安定化: 局所密度行列 Δ を明示的にエルミート化
         Delta = (n_ab + n_ab.conj().T) / 2.0
 
-        # b. R の直接計算
+        # b. R の直接計算（固有値クリッピングで数値安定化）
         #    <Φ|c†_α b_a|Φ> = [Δ(1-Δ)]^{1/2} R
-        #    → R = pinv([Δ(1-Δ)]^{1/2}) @ fdaggerc
-        fdaggerc = np.array([[Phi.conj() @ self.op_cb[a, al] @ Phi
-                              for al in range(B)] for a in range(B)])
-        sqrt_D1mD = LA.sqrtm(Delta @ (I - Delta))
-        R = LA.pinv(sqrt_D1mD) @ fdaggerc
+        #    → R = [Δ(1-Δ)]^{-1/2} @ fdaggerc
+        #    固有値を [ε, 1-ε] にクリップして sqrtm の複素化を防ぐ
+        # op_cb は (B, 1, ...) — 物理軌道はスピン上向き1本のみ
+        fdaggerc = np.array([[Phi.conj() @ self.op_cb[a, 0] @ Phi] for a in range(B)])
+        # shape: (B, 1)
+        eigs_D, U_D = LA.eigh(Delta)
+        eigs_D = np.clip(np.real(eigs_D), 1e-10, 1.0 - 1e-10)
+        inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
+        R = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc
+        # shape: (B, 1)
 
         # c. H_emb^0 は run_simulation 側で事前構築済み（D・Hubbard U を含む）
         #    self.H_emb_0 をそのまま使用。D を毎ステップ足す処理は不要。
@@ -134,7 +138,8 @@ class TDgGADynamics:
         #   すなわち K[a,b] = ⟨Φ|[op_bb[a,b], H_emb^0]|Φ⟩ − (n @ h_qp^T − h_qp^T @ n)[a,b]
 
         # Step 1: Λ^c = 0 で h_qp を仮計算
-        h_qp_0 = R.conj().T @ self.H_phys @ R   # Λ^c = 0
+        # R は (B,1)、H_phys は (1,1) → h_qp_0 = R H_phys R† で (B,B) を得る
+        h_qp_0 = R @ self.H_phys @ R.conj().T   # Λ^c = 0, shape: (B,B)
 
         # K 行列の計算
         # self.H_emb_0 は (dim_Phi, dim_Phi) のフォック空間行列
