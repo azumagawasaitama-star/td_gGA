@@ -41,15 +41,22 @@ B = ga_obj.nqspo              # quasi-spatial orbital 数 (= (nphysorb + nghost)
 ed = ga_obj.imp_solver        # edSolver インスタンス
 
 Phi_0   = ed.eig_vec.copy()                            # 多体埋め込み基底状態 (hsize_half,)
-n_ab_0  = ga_obj.Delta[:B, :B].copy()                  # 局所準粒子密度行列 (B, B)
 dim_Phi = ed.hsize_half                                 # 多体 Hilbert 空間次元
 
-# D: ga_obj.D は (B, 1) のため、(B, B) にゼロパディングして Frozen-D 初期値とする
-D_guess_0 = np.zeros((B, B), dtype=complex)
-D_guess_0[:, :ga_obj.D.shape[1]] = ga_obj.D            # 最初の列だけに hybridization を格納
+# fix_gauge の変換行列を取得し、ゲージ固定基底で全量を統一する。
+# Phi_0 は H_emb(D_gf, Lmbdac_gf) の固有状態なので FH_list の順序 = ゲージ基底。
+# ga_obj.Delta は元の基底にあるため U_trans で回転させる。
+D_gf, _, phasemat_fix, permmat_fix, transmat_fix = \
+    ga_obj.fix_gauge(ga_obj.D.copy(), ga_obj.Lmbdac.copy(), lfor_D=True, lreturn_mats=True)
+# U_trans: 元の基底 → ゲージ固定基底 (= T_back^T)
+U_trans = permmat_fix @ phasemat_fix @ transmat_fix.T  # (B, B) 実数直交行列
+Delta_orig = ga_obj.Delta[:B, :B].copy()
+n_ab_0 = U_trans @ Delta_orig @ U_trans.T              # ゲージ固定基底の密度行列
 
 print(f"  B = {B}, dim_Phi = {dim_Phi}")
 print(f"  ||Phi_0|| = {np.linalg.norm(Phi_0):.6f}  (≈ 1 が正常)")
+print(f"  U_trans:\n{np.round(U_trans, 4)}")
+print(f"  D_gf: {D_gf.flatten().round(6)}")
 
 # ============================================================
 # 3. フォック空間演算子 op_cb, op_bb の構築
@@ -65,15 +72,13 @@ op_bb = np.zeros((B, B, dim_Phi, dim_Phi), dtype=complex)
 nphys = ed.n_phys_orb  # = 2 (spin-up=0, spin-dn=1)
 c_up_dag = FH_list[0]
 
-# fix_gauge により bath 軌道は逆順に並んでいる:
-# Delta の a 番軌道 ↔ FH_list[nphys + 2*(B-1-a)]  (spin-up bath)
-#                    ↔ FH_list[nphys + 2*(B-1-a)+1] (spin-dn bath)
+# ゲージ固定基底で統一: FH_list[nphys + 2*a] が a 番目の bath (spin-up) に対応
 for a in range(B):
-    bath_up_idx = nphys + 2 * (B - 1 - a)
+    bath_up_idx = nphys + 2 * a
     b_ann_a = FH_list[bath_up_idx].getH()
     op_cb[a, 0] = c_up_dag.dot(b_ann_a)[ioff:iend, ioff:iend].toarray()
     for b in range(B):
-        bath_up_b = nphys + 2 * (B - 1 - b)
+        bath_up_b = nphys + 2 * b
         b_dag_b = FH_list[bath_up_b]
         op_bb[a, b] = b_dag_b.dot(b_ann_a)[ioff:iend, ioff:iend].toarray()
 
@@ -82,7 +87,7 @@ print("  op_cb, op_bb の構築完了。")
 # ============================================================
 # 4. H_emb_0_fock の構築 (Fock 空間, U_final へのクエンチ)
 # ============================================================
-U_final = 4.0
+U_final = 2.5
 print(f"[4] クエンチ後ハミルトニアン (U_f = {U_final}) の固定部分を構築中...")
 
 import scipy.sparse as sp
@@ -93,14 +98,13 @@ n_dn_phys = FH_list[1].dot(FH_list[1].getH())
 op_n_phys = (n_up_phys + n_dn_phys)[ioff:iend, ioff:iend]
 H_loc_fock += (-U_final / 2.0) * op_n_phys
 
-D_vec = ga_obj.D
 for a in range(B):
-    bath_up_idx = nphys + 2 * (B - 1 - a)
-    bath_dn_idx = nphys + 2 * (B - 1 - a) + 1
+    bath_up_idx = nphys + 2 * a       # ゲージ固定基底: forward indexing
+    bath_dn_idx = nphys + 2 * a + 1
     term_up = FH_list[0].dot(FH_list[bath_up_idx].getH()) + FH_list[bath_up_idx].dot(FH_list[0].getH())
     term_dn = FH_list[1].dot(FH_list[bath_dn_idx].getH()) + FH_list[bath_dn_idx].dot(FH_list[1].getH())
-    H_loc_fock += D_vec[a, 0] * term_up[ioff:iend, ioff:iend]
-    H_loc_fock += D_vec[a, 0] * term_dn[ioff:iend, ioff:iend]
+    H_loc_fock += D_gf[a, 0] * term_up[ioff:iend, ioff:iend]
+    H_loc_fock += D_gf[a, 0] * term_dn[ioff:iend, ioff:iend]
 
 n_up_full = FH_list[0].dot(FH_list[0].getH())
 n_dn_full = FH_list[1].dot(FH_list[1].getH())
@@ -127,7 +131,7 @@ physics_params = {
 }
 
 t_max = 10.0
-dt    = 0.05
+dt    = 0.005
 
 sol = td.run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, atol=1e-10)
 
@@ -146,6 +150,7 @@ norms       = np.zeros(nsteps)
 occupations = np.zeros((B, nsteps))
 docc        = np.zeros(nsteps)   # 二重占有数 d(t) = ⟨Φ|n_↑ n_↓|Φ⟩
 Z_t         = np.zeros(nsteps)   # 準粒子重み Z(t) = (R R†)_{00}
+E_emb_t     = np.zeros(nsteps)   # 埋め込みハミルトニアン期待値 ⟨Φ|H_emb_0|Φ⟩
 
 I = np.eye(B)
 from scipy import linalg as LA
@@ -166,46 +171,15 @@ for k in range(nsteps):
     R = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc
     # R は (B, 1) → Z = (R R†)[0,0]
     Z_t[k] = np.real((R @ R.conj().T)[0, 0])
+    E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
 
 # 数値を npz に保存（replot.py で即座に再プロット可能）
 np.savez('td_gga_result.npz',
          t=sol.t, norms=norms, occupations=occupations, docc=docc, Z=Z_t,
-         U_initial=U_initial, U_final=U_final)
-
-fig, axes = plt.subplots(4, 1, figsize=(8, 10), sharex=True)
-
-# --- プロット 1: ノルムの保存 ---
-axes[0].plot(sol.t, norms, 'k-', linewidth=1.5)
-axes[0].axhline(1.0, color='gray', linestyle='--', linewidth=0.8, label='理想値 = 1')
-axes[0].set_ylabel(r'$\langle\Phi(t)|\Phi(t)\rangle$')
-axes[0].set_title(f'TD-gGA クエンチダイナミクス  $U_i={U_initial}$ → $U_f={U_final}$')
-axes[0].legend()
-norm_dev = max(abs(norms - 1.0).max() * 1.5, 1e-4)
-axes[0].set_ylim([1.0 - norm_dev, 1.0 + norm_dev])
-
-# --- プロット 2: 準粒子占有数 ---
-for orb in range(B):
-    axes[1].plot(sol.t, occupations[orb, :], label=f'軌道 {orb}')
-axes[1].set_ylabel(r'$n_{aa}(t)$')
-axes[1].legend()
-
-# --- プロット 3: 二重占有数 ---
-axes[2].plot(sol.t, docc, 'g-', linewidth=1.5)
-axes[2].set_ylabel(r'$d(t) = \langle n_\uparrow n_\downarrow \rangle$')
-axes[2].set_ylim(bottom=0)
-
-# --- プロット 4: 準粒子重み ---
-axes[3].plot(sol.t, Z_t, 'm-', linewidth=1.5)
-axes[3].set_ylabel(r'$Z(t)$')
-axes[3].set_ylim([0.0, 1.0])
-
-plt.tight_layout()
-plt.savefig('quench_dynamics.png', dpi=150)
-plt.show()
-print("  プロットを quench_dynamics.png に保存しました。")
+         E_emb=E_emb_t, U_initial=U_initial, U_final=U_final)
 
 # ============================================================
-# 7. 平衡状態（初期状態）の結果サマリー
+# 7. 平衡状態（初期状態）の結果サマリー（ターミナル出力）
 # ============================================================
 print("\n" + "="*50)
 print(f"  平衡状態サマリー (U_i = {U_initial})")
@@ -218,3 +192,76 @@ print(f"  dim_Phi   = {dim_Phi},  B = {B}")
 print("="*50)
 print(f"  t=0 の d(t) = {docc[0]:.6f}  (平衡値と一致するか確認)")
 print(f"  t=0 の Z(t) = {Z_t[0]:.6f}  (平衡値 Z={ga_obj.Z:.6f} と比較)")
+
+# ============================================================
+# 8. プロット（2×2 レイアウト）
+# ============================================================
+import os, glob
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+ax_norm = axes[0, 0]
+ax_occ  = axes[0, 1]
+ax_docc = axes[1, 0]
+ax_Z    = axes[1, 1]
+
+# タイトルに平衡状態の物理量を記載
+eq_text = (f"平衡状態 ($U_i={U_initial}$):  "
+           f"$Z_0={ga_obj.Z:.4f}$,  "
+           f"$d_0={docc[0]:.4f}$,  "
+           f"$n_{{ab}}$={[f'{np.real(n_ab_0[i,i]):.3f}' for i in range(B)]}")
+fig.suptitle(
+    f'TD-gGA クエンチダイナミクス  $U_i={U_initial}$ → $U_f={U_final}$\n{eq_text}',
+    fontsize=11)
+
+# --- プロット 1: 埋め込みエネルギーの保存 ---
+ax_norm.plot(sol.t, E_emb_t, color='black', linewidth=1.5)
+ax_norm.axhline(E_emb_t[0], color='gray', linestyle='--', linewidth=0.8,
+                label=f'初期値 $E_0={E_emb_t[0]:.4f}$')
+ax_norm.set_ylabel(r'真の保存エネルギー $E_{emb}$')
+ax_norm.set_xlabel(r'時刻 $t$')
+ax_norm.legend()
+E_mean = np.mean(E_emb_t)
+ax_norm.set_ylim([E_mean - 0.01, E_mean + 0.01])
+
+# --- プロット 2: 準粒子占有数 ---
+for orb in range(B):
+    ax_occ.plot(sol.t, occupations[orb, :], label=f'軌道 {orb}')
+ax_occ.set_ylabel(r'$n_{aa}(t)$')
+ax_occ.set_xlabel(r'時刻 $t$')
+ax_occ.legend()
+
+# --- プロット 3: 二重占有数 ---
+ax_docc.plot(sol.t, docc, 'g-', linewidth=1.5)
+ax_docc.axhline(docc[0], color='gray', linestyle='--', linewidth=0.8,
+                label=f'初期値 $d_0={docc[0]:.4f}$')
+ax_docc.set_ylabel(r'$d(t) = \langle n_\uparrow n_\downarrow \rangle$')
+ax_docc.set_xlabel(r'時刻 $t$')
+ax_docc.set_ylim(bottom=0)
+ax_docc.legend()
+
+# --- プロット 4: 準粒子重み ---
+ax_Z.plot(sol.t, np.clip(Z_t, 0, 1), 'm-', linewidth=1.5)
+ax_Z.axhline(min(Z_t[0], 1.0), color='gray', linestyle='--', linewidth=0.8,
+             label=f'初期値 $Z_0={Z_t[0]:.4f}$')
+ax_Z.set_ylabel(r'$Z(t)$')
+ax_Z.set_xlabel(r'時刻 $t$')
+ax_Z.set_ylim([0.0, 1.0])
+ax_Z.legend()
+
+plt.tight_layout()
+
+# 連番でファイル名を自動生成（quench_1.png, quench_2.png, ...）
+existing = glob.glob('quench_*.png')
+nums = []
+for f in existing:
+    base = os.path.splitext(os.path.basename(f))[0]
+    try:
+        nums.append(int(base.split('_')[1]))
+    except (IndexError, ValueError):
+        pass
+next_num = max(nums, default=0) + 1
+save_name = f'quench_{next_num}.png'
+
+plt.savefig(save_name, dpi=150)
+plt.show()
+print(f"  プロットを {save_name} に保存しました。")
