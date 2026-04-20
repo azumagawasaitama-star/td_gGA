@@ -149,7 +149,8 @@ nsteps = len(sol.t)
 norms       = np.zeros(nsteps)
 occupations = np.zeros((B, nsteps))
 docc        = np.zeros(nsteps)   # 二重占有数 d(t) = ⟨Φ|n_↑ n_↓|Φ⟩
-Z_t         = np.zeros(nsteps)   # 準粒子重み Z(t) = (R R†)_{00}
+Z_bare_t    = np.zeros(nsteps)   # 裸の重み Z_bare(t) = |R[0,0]|²
+Z_dressed_t = np.zeros(nsteps)   # 着衣の重み Z_dressed(t): Frozen-Λ 多バンド公式
 E_emb_t     = np.zeros(nsteps)   # 埋め込みハミルトニアン期待値 ⟨Φ|H_emb_0|Φ⟩
 E_tot_t     = np.zeros(nsteps)   # TDVP 保存エネルギー ⟨Φ|H_emb_0|Φ⟩ - Tr(n_ab R H_phys R†)
 
@@ -166,27 +167,38 @@ for k in range(nsteps):
                         for b in range(B)] for a in range(B)])
     occupations[:, k] = np.real(np.diag(n_ab_t))
 
-    # --- Z(t) と E_tot の計算 ---
+    # --- Z(t) と E_tot の計算（ゲージ固定基底のまま計算）---
+    # ODE もゲージ固定基底で動くため、U_trans 回転は不要
     fdaggerc_gf = np.array([[Phi_t.conj() @ op_cb[a, 0] @ Phi_t] for a in range(B)])
-    n_ab_orig   = U_trans.T @ n_ab_t @ U_trans
-    fdaggerc_orig = U_trans.T @ fdaggerc_gf
 
-    Delta_orig_t = (n_ab_orig + n_ab_orig.conj().T) / 2.0
-    eigs_D, U_D = LA.eigh(Delta_orig_t)
+    Delta_gf_t = (n_ab_t + n_ab_t.conj().T) / 2.0
+    eigs_D, U_D = LA.eigh(Delta_gf_t)
     eigs_D = np.clip(np.real(eigs_D), 1e-4, 1.0 - 1e-4)
     inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
-    R_orig = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc_orig
+    R_gf = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc_gf
 
-    # Z = R† R（スカラー）: 単一バンドの準粒子重みの正しい定義
-    Z_t[k] = np.real((R_orig.conj().T @ R_orig)[0, 0])
+    # Z_bare: R_gf はシミュレーション基底（fix_gauge(D,Λ^c) ゲージ）で計算
+    Z_bare_t[k]    = np.real((R_gf @ R_gf.conj().T)[0, 0])
+    # Z_dressed: U_trans.T で fix_gauge(R,Λ_new) ゲージに変換してから多バンド公式
+    R_dressed      = U_trans.T @ R_gf
+    Z_dressed_t[k] = ga_obj.calc_Z(ga_obj.Lmbda_new, R_dressed)
     E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
 
-    h_qp_0 = R_orig @ H_phys_1body @ R_orig.conj().T
-    E_tot_t[k] = E_emb_t[k] - np.real(np.trace(n_ab_orig @ h_qp_0.T))
+    # 全エネルギー E_tot の計算 (Eq. 79 に基づく修正)
+    # 1. 世界Bの運動エネルギー E_kin = Tr(n_ab * h_qp^0)
+    h_qp_0 = R_gf @ H_phys_1body @ R_gf.conj().T
+    E_kin = np.real(np.trace(n_ab_t @ h_qp_0.T))
+    # 2. 世界Aの純粋な局所エネルギー: H_emb の期待値から混成項を引く
+    # E_hyb = 2 Re Tr(D_gf^T fdaggerc_gf)  (Eq. 82)
+    E_hyb = 4.0 * np.real(np.trace(D_gf.T @ fdaggerc_gf))
+    E_loc = E_emb_t[k] - E_hyb
+    # 3. 全エネルギー (保存量)
+    E_tot_t[k] = E_kin + E_loc
 
 # 数値を npz に保存（replot.py で即座に再プロット可能）
 np.savez('td_gga_result.npz',
-         t=sol.t, norms=norms, occupations=occupations, docc=docc, Z=Z_t,
+         t=sol.t, norms=norms, occupations=occupations, docc=docc,
+         Z_bare=Z_bare_t, Z_dressed=Z_dressed_t,
          E_emb=E_emb_t, E_tot=E_tot_t, U_initial=U_initial, U_final=U_final)
 
 # ============================================================
@@ -202,7 +214,8 @@ print(f"  ||Phi_0|| = {np.linalg.norm(Phi_0):.10f}")
 print(f"  dim_Phi   = {dim_Phi},  B = {B}")
 print("="*50)
 print(f"  t=0 の d(t) = {docc[0]:.6f}  (平衡値と一致するか確認)")
-print(f"  t=0 の Z(t) = {Z_t[0]:.6f}  (平衡値 Z={ga_obj.Z:.6f} と比較)")
+print(f"  t=0 の Z_bare    = {Z_bare_t[0]:.6f}  (裸の重み |R[0,0]|²)")
+print(f"  t=0 の Z_dressed = {Z_dressed_t[0]:.6f}  (着衣の重み, 平衡値 Z={ga_obj.Z:.6f} と比較)")
 
 # ============================================================
 # 8. プロット（2×2 レイアウト）
@@ -228,11 +241,11 @@ fig.suptitle(
 ax_norm.plot(sol.t, E_tot_t, color='black', linewidth=1.5)
 ax_norm.axhline(E_tot_t[0], color='gray', linestyle='--', linewidth=0.8,
                 label=f'初期値 $E_0={E_tot_t[0]:.4f}$')
-ax_norm.set_ylabel(r'$E_{\rm tot}=\langle H_{\rm emb}^0\rangle - {\rm Tr}(n\,RH_{\rm phys}R^\dagger)$')
+ax_norm.set_ylabel(r'$E_{\rm tot}=E_{\rm kin}+E_{\rm loc}$  (Eq. 79)')
 ax_norm.set_xlabel(r'時刻 $t$')
 ax_norm.legend()
-E_mean = np.mean(E_tot_t)
-ax_norm.set_ylim([E_mean - 0.01, E_mean + 0.01])
+E_margin = max(np.ptp(E_tot_t) * 0.15, 0.005)
+ax_norm.set_ylim([np.min(E_tot_t) - E_margin, np.max(E_tot_t) + E_margin])
 
 # --- プロット 2: 準粒子占有数 ---
 for orb in range(B):
@@ -250,14 +263,17 @@ ax_docc.set_xlabel(r'時刻 $t$')
 ax_docc.set_ylim(bottom=0)
 ax_docc.legend()
 
-# --- プロット 4: 準粒子重み ---
-ax_Z.plot(sol.t, np.clip(Z_t, 0, 1), 'm-', linewidth=1.5)
-ax_Z.axhline(min(Z_t[0], 1.0), color='gray', linestyle='--', linewidth=0.8,
-             label=f'初期値 $Z_0={Z_t[0]:.4f}$')
+# --- プロット 4: 準粒子重み（裸 vs 着衣）---
+ax_Z.plot(sol.t, np.clip(Z_dressed_t, 0, 1), 'm-', linewidth=1.5,
+          label=rf'$Z_{{\rm dressed}}$ (Frozen-$\Lambda$), $Z_0={Z_dressed_t[0]:.4f}$')
+ax_Z.plot(sol.t, np.clip(Z_bare_t, 0, 1), 'b--', linewidth=1.2,
+          label=rf'$Z_{{\rm bare}}=|R_{{00}}|^2$, $Z_0={Z_bare_t[0]:.4f}$')
+ax_Z.axhline(ga_obj.Z, color='gray', linestyle=':', linewidth=0.8,
+             label=f'静的 $Z={ga_obj.Z:.4f}$')
 ax_Z.set_ylabel(r'$Z(t)$')
 ax_Z.set_xlabel(r'時刻 $t$')
 ax_Z.set_ylim([0.0, 1.0])
-ax_Z.legend()
+ax_Z.legend(fontsize=8)
 
 plt.tight_layout()
 
