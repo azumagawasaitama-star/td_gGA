@@ -4,34 +4,20 @@ from scipy import integrate, linalg as LA
 # ==========================================
 # 1. パッキング・アンパック用ヘルパー関数
 # ==========================================
-def pack_state(Phi, n_ab):
+def pack_state(Phi, n_ab=None):
     """
-    状態ベクトルPhi(複素1次元配列)と密度行列n_ab(複素2次元配列)を、
-    ODEソルバー用の1次元実数配列(Y_flat)にパッキングする。
-    - Phiの実部、Phiの虚部、n_abの実部、n_abの虚部をnp.concatenateで1次元に繋ぐ。
+    Phi のみを ODE ソルバー用の1次元実数配列にパックする。
+    n_ab は Phi から毎ステップ直接計算するため ODE 状態に含めない。
     """
-    return np.concatenate([
-        Phi.real,
-        Phi.imag,
-        n_ab.real.ravel(),
-        n_ab.imag.ravel(),
-    ])
+    return np.concatenate([Phi.real, Phi.imag])
 
-def unpack_state(Y_flat, dim_Phi, B):
+def unpack_state(Y_flat, dim_Phi, B=None):
     """
-    1次元実数配列(Y_flat)から、Phi(複素1次元配列)とn_ab(複素2次元配列)を復元する。
-    - Y_flatをスライスして実部と虚部を取り出し、Phiとn_ab(サイズB x B)を再構築する。
+    1次元実数配列から Phi を復元する。
+    n_ab は None を返す（呼び出し側で op_bb から計算すること）。
     """
-    i0 = 0
-    i1 = dim_Phi
-    i2 = 2 * dim_Phi
-    i3 = 2 * dim_Phi + B * B
-    i4 = 2 * dim_Phi + 2 * B * B
-
-    Phi  = Y_flat[i0:i1] + 1j * Y_flat[i1:i2]
-    n_ab = (Y_flat[i2:i3] + 1j * Y_flat[i3:i4]).reshape(B, B)
-
-    return Phi, n_ab
+    Phi = Y_flat[:dim_Phi] + 1j * Y_flat[dim_Phi:2 * dim_Phi]
+    return Phi, None
 
 # ==========================================
 # 2. Lambda_c の直接計算（シルベスター方程式）
@@ -55,20 +41,14 @@ def compute_Lambda_c(Delta, K):
 
     B = len(eigenvalues)
     Lmbdac_tilde = np.zeros((B, B), dtype=complex)
+    epsilon = 1e-4  # ローレンツ型スムージングの幅
     for i in range(B):
         for j in range(B):
             if i != j:
                 diff = eigenvalues[j] - eigenvalues[i]
-                # +1e-12 の代わりに閾値でゼロ除算を回避:
-                # diff の符号が保たれ、Λ^c のエルミート性が壊れない
-                if abs(diff) > 1e-10:
-                    Lmbdac_tilde[i, j] = K_tilde[i, j] / diff
-                else:
-                    Lmbdac_tilde[i, j] = 0.0
-            # i == j : ゲージ自由度のため 0（デフォルト値のまま）
+                Lmbdac_tilde[i, j] = K_tilde[i, j] * diff / (diff**2 + epsilon**2)
 
     Lmbdac = U @ Lmbdac_tilde @ U.conj().T
-    # 数値誤差による非エルミート化を防ぐ強制エルミート化
     return (Lmbdac + Lmbdac.conj().T) / 2.0
 
 # ==========================================
@@ -80,70 +60,42 @@ class TDgGADynamics:
         物理パラメータを保持するクラス。
         D は H_emb_0_fock に事前に組み込み済み (Frozen-D 近似)。
 
-        Parameters
-        ----------
-        H_emb_0_fock : (dim_Phi, dim_Phi) ndarray
-            Λ^c を除いたすべての項を含む多体ハミルトニアン（Fock 空間）。
-            物理 on-site (-U/2)、D ブロック、Hubbard U を含む。
-        H_phys_1body : (B, B) ndarray
-            h_qp の 0 次項 R† H_phys R を計算するための 1 体物理ブロック。
-
         前提: インスタンス生成後に以下の属性を設定しておくこと。
-              system.op_cb = op_cb  — (B,B,dim_Phi,dim_Phi) c†_α b_a
+              system.op_cb = op_cb  — (B,1,dim_Phi,dim_Phi) c†_α b_a
               system.op_bb = op_bb  — (B,B,dim_Phi,dim_Phi) b†_b b_a
         """
         self.dim_Phi  = dim_Phi
         self.B        = B
-        self.H_emb_0  = H_emb_0_fock   # (dim_Phi, dim_Phi): 固定ハミルトニアン
-        self.H_phys   = H_phys_1body    # (B, B): h_qp 用物理ブロック
+        self.H_emb_0  = H_emb_0_fock
+        self.H_phys   = H_phys_1body
 
     def compute_derivatives(self, t, Y_flat):
         """
-        scipy.integrate.solve_ivp から各時間ステップで呼び出される関数。
-        dY/dt を反復ソルバーなしで直接計算して返す。
+        ODE の右辺。n_ab は Phi から直接計算することで拘束条件を厳密に維持する。
         """
         B = self.B
 
-        # 1. 1次元実数配列 Y_flat → 複素 Phi, n_ab
-        Phi, n_ab = unpack_state(Y_flat, self.dim_Phi, B)
+        # 1. Phi のみアンパック
+        Phi = Y_flat[:self.dim_Phi] + 1j * Y_flat[self.dim_Phi:]
 
-        # a. 数値安定化: 局所密度行列 Δ を明示的にエルミート化
+        # 2. n_ab を Phi から直接計算（拘束条件 n_ab = <Phi|op_bb|Phi> を厳密に保つ）
+        n_ab = np.array([[Phi.conj() @ self.op_bb[a, b] @ Phi
+                          for b in range(B)] for a in range(B)])
+
+        # 3. Delta をエルミート化
         Delta = (n_ab + n_ab.conj().T) / 2.0
 
-        # b. R の直接計算（固有値クリッピングで数値安定化）
-        #    <Φ|c†_α b_a|Φ> = [Δ(1-Δ)]^{1/2} R
-        #    → R = [Δ(1-Δ)]^{-1/2} @ fdaggerc
-        #    固有値を [ε, 1-ε] にクリップして sqrtm の複素化を防ぐ
-        # op_cb は (B, 1, ...) — 物理軌道はスピン上向き1本のみ
+        # 4. R の計算
         fdaggerc = np.array([[Phi.conj() @ self.op_cb[a, 0] @ Phi] for a in range(B)])
-        # shape: (B, 1)
         eigs_D, U_D = LA.eigh(Delta)
-        eigs_D = np.clip(np.real(eigs_D), 1e-10, 1.0 - 1e-10)
+        eigs_D = np.clip(np.real(eigs_D), 1e-4, 1.0 - 1e-4)
         inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
         R = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc
-        # shape: (B, 1)
 
-        # c. H_emb^0 は run_simulation 側で事前構築済み（D・Hubbard U を含む）
-        #    self.H_emb_0 をそのまま使用。D を毎ステップ足す処理は不要。
+        # 5. h_qp^0 = R H_phys R† （Λ^c = 0 の仮計算）
+        h_qp_0 = R @ self.H_phys @ R.conj().T
 
-        # d. Λ^c の計算（シルベスター方程式 [Λ^c, n] = K）
-        #
-        # K の循環依存を解決するため 2 段階で計算する:
-        #   Step 1: Λ^c = 0 として h_qp を仮計算 → K を計算
-        #   Step 2: K を使って最終的な Λ^c を決定
-        #
-        # K の導出:
-        #   制約条件 d/dt⟨b†b⟩_{ab} = dn_{ab}/dt を Heisenberg 方程式で展開すると
-        #   [Λ^c, n]_{ab} = ⟨Φ|[op_bb[a,b], H_emb^0]|Φ⟩ − [n, h_qp^T]_{ab}
-        #   すなわち K[a,b] = ⟨Φ|[op_bb[a,b], H_emb^0]|Φ⟩ − (n @ h_qp^T − h_qp^T @ n)[a,b]
-
-        # Step 1: Λ^c = 0 で h_qp を仮計算
-        # R は (B,1)、H_phys は (1,1) → h_qp_0 = R H_phys R† で (B,B) を得る
-        h_qp_0 = R @ self.H_phys @ R.conj().T   # Λ^c = 0, shape: (B,B)
-
-        # K 行列の計算
-        # self.H_emb_0 は (dim_Phi, dim_Phi) のフォック空間行列
-        # self.op_bb[a,b] も (dim_Phi, dim_Phi) のため、交換子がフォック空間で正しく計算される
+        # 6. K 行列（拘束条件の整合性条件）
         comm_n_hqp = n_ab @ h_qp_0.T - h_qp_0.T @ n_ab
         K = np.zeros((B, B), dtype=complex)
         for a in range(B):
@@ -152,45 +104,29 @@ class TDgGADynamics:
                 K[a, b] = Phi.conj() @ comm_op @ Phi
         K -= comm_n_hqp
 
-        # Step 2: K を使って Λ^c を決定
+        # 7. Λ^c を決定
         Lmbdac = compute_Lambda_c(Delta, K)
 
-        # H_emb = H_emb^0 + Σ_{ab} Λ^c_{ab} b†_a b_b（フォック空間での正しい加算）
-        # TD-gGA の変分原理: Λ^c は ⟨Φ|b†_b b_a|Φ⟩ = Δ_{ab} の拘束力
-        # → 浴/ゴースト軌道ブロックにかかる演算子であり、op_bb で加算する
+        # 8. H_emb = H_emb^0 + Σ Λ^c_{ab} op_bb[a,b]
         H_emb = np.array(self.H_emb_0, dtype=complex)
         for a in range(B):
             for b in range(B):
                 if abs(Lmbdac[a, b]) > 1e-14:
                     H_emb += Lmbdac[a, b] * self.op_bb[a, b]
 
-        # 準粒子ハミルトニアン h_qp を構築 (B × B)
-        #   h_qp = R† H_phys R + Λ^c
-        h_qp = h_qp_0 + Lmbdac
-
-        # 時間発展の直前に強制エルミート化（非エルミート成分が混入するとノルムが発散する）
         H_emb = (H_emb + H_emb.conj().T) / 2.0
-        h_qp  = (h_qp  + h_qp.conj().T)  / 2.0
 
-        # シュレーディンガー方程式: i ∂_t |Φ⟩ = H_emb |Φ⟩
-        # H_emb は (dim_Phi, dim_Phi)、Phi は (dim_Phi,) — 次元一致
+        # 9. シュレーディンガー方程式: dPhi/dt = -i H_emb Phi
         dPhi_dt = -1j * (H_emb @ Phi)
 
-        # von Neumann 方程式: i ∂_t n = [n, h_qp^T]
-        #   → ∂_t n = -i (n h_qp^T - h_qp^T n)
-        dn_ab_dt = -1j * (n_ab @ h_qp.T - h_qp.T @ n_ab)
-
-        return pack_state(dPhi_dt, dn_ab_dt)
+        return pack_state(dPhi_dt)
 
 # ==========================================
 # 4. メイン実行関数
 # ==========================================
 def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, atol=1e-10):
     """
-    時間発展を実行するメイン関数。
-
-    physics_params に必要なキー:
-      dim_Phi, B, H_emb_0_fock, H_phys_1body, op_cb, op_bb
+    時間発展を実行するメイン関数。n_ab_0 は互換性のため残すが使用しない。
     """
     dim_Phi      = physics_params['dim_Phi']
     B            = physics_params['B']
@@ -199,18 +135,15 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
     op_cb        = physics_params['op_cb']
     op_bb        = physics_params['op_bb']
 
-    # TDgGADynamics インスタンスを生成し、フォック空間演算子行列を属性として設定
     system = TDgGADynamics(dim_Phi, B, H_emb_0_fock, H_phys_1body)
     system.op_cb = op_cb
     system.op_bb = op_bb
 
-    # 初期状態を1次元実数配列にパック
-    Y0_flat = pack_state(Phi_0, n_ab_0)
+    # Phi のみパック（n_ab は ODE 状態に含めない）
+    Y0_flat = pack_state(Phi_0)
 
-    # 評価時刻の配列を作成
     t_eval = np.arange(0, t_max, dt)
 
-    # ODE ソルバーで時間発展を計算
     sol = integrate.solve_ivp(
         fun=system.compute_derivatives,
         t_span=(0, t_max),
@@ -224,5 +157,4 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
     return sol
 
 if __name__ == "__main__":
-    # ここにダミーデータを与えてテスト実行するコードを書く
     pass

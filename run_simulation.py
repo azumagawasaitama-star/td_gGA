@@ -151,32 +151,43 @@ occupations = np.zeros((B, nsteps))
 docc        = np.zeros(nsteps)   # 二重占有数 d(t) = ⟨Φ|n_↑ n_↓|Φ⟩
 Z_t         = np.zeros(nsteps)   # 準粒子重み Z(t) = (R R†)_{00}
 E_emb_t     = np.zeros(nsteps)   # 埋め込みハミルトニアン期待値 ⟨Φ|H_emb_0|Φ⟩
+E_tot_t     = np.zeros(nsteps)   # TDVP 保存エネルギー ⟨Φ|H_emb_0|Φ⟩ - Tr(n_ab R H_phys R†)
 
 I = np.eye(B)
 from scipy import linalg as LA
 
 for k in range(nsteps):
-    Phi_t, n_ab_t = td.unpack_state(sol.y[:, k], dim_Phi, B)
-    norms[k]          = np.real(Phi_t.conj() @ Phi_t)
-    occupations[:, k] = np.real(np.diag(n_ab_t))
-    docc[k]           = np.real(Phi_t.conj() @ op_docc @ Phi_t)
+    Phi_t, _ = td.unpack_state(sol.y[:, k], dim_Phi, B)
+    norms[k] = np.real(Phi_t.conj() @ Phi_t)
+    docc[k]  = np.real(Phi_t.conj() @ op_docc @ Phi_t)
 
-    # R 行列の計算（固有値クリッピングで数値安定化）
-    # op_cb は (B, 1, ...) — スピン上向き1本のみ → fdaggerc は (B, 1)
-    Delta    = (n_ab_t + n_ab_t.conj().T) / 2.0
-    fdaggerc = np.array([[Phi_t.conj() @ op_cb[a, 0] @ Phi_t] for a in range(B)])
-    eigs_D, U_D = LA.eigh(Delta)
-    eigs_D = np.clip(np.real(eigs_D), 1e-10, 1.0 - 1e-10)
+    # n_ab を Phi から直接計算（拘束条件を厳密に満たす）
+    n_ab_t = np.array([[Phi_t.conj() @ op_bb[a, b] @ Phi_t
+                        for b in range(B)] for a in range(B)])
+    occupations[:, k] = np.real(np.diag(n_ab_t))
+
+    # --- Z(t) と E_tot の計算 ---
+    fdaggerc_gf = np.array([[Phi_t.conj() @ op_cb[a, 0] @ Phi_t] for a in range(B)])
+    n_ab_orig   = U_trans.T @ n_ab_t @ U_trans
+    fdaggerc_orig = U_trans.T @ fdaggerc_gf
+
+    Delta_orig_t = (n_ab_orig + n_ab_orig.conj().T) / 2.0
+    eigs_D, U_D = LA.eigh(Delta_orig_t)
+    eigs_D = np.clip(np.real(eigs_D), 1e-4, 1.0 - 1e-4)
     inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
-    R = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc
-    # R は (B, 1) → Z = (R R†)[0,0]
-    Z_t[k] = np.real((R @ R.conj().T)[0, 0])
+    R_orig = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc_orig
+
+    # Z = R† R（スカラー）: 単一バンドの準粒子重みの正しい定義
+    Z_t[k] = np.real((R_orig.conj().T @ R_orig)[0, 0])
     E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
+
+    h_qp_0 = R_orig @ H_phys_1body @ R_orig.conj().T
+    E_tot_t[k] = E_emb_t[k] - np.real(np.trace(n_ab_orig @ h_qp_0.T))
 
 # 数値を npz に保存（replot.py で即座に再プロット可能）
 np.savez('td_gga_result.npz',
          t=sol.t, norms=norms, occupations=occupations, docc=docc, Z=Z_t,
-         E_emb=E_emb_t, U_initial=U_initial, U_final=U_final)
+         E_emb=E_emb_t, E_tot=E_tot_t, U_initial=U_initial, U_final=U_final)
 
 # ============================================================
 # 7. 平衡状態（初期状態）の結果サマリー（ターミナル出力）
@@ -213,14 +224,14 @@ fig.suptitle(
     f'TD-gGA クエンチダイナミクス  $U_i={U_initial}$ → $U_f={U_final}$\n{eq_text}',
     fontsize=11)
 
-# --- プロット 1: 埋め込みエネルギーの保存 ---
-ax_norm.plot(sol.t, E_emb_t, color='black', linewidth=1.5)
-ax_norm.axhline(E_emb_t[0], color='gray', linestyle='--', linewidth=0.8,
-                label=f'初期値 $E_0={E_emb_t[0]:.4f}$')
-ax_norm.set_ylabel(r'真の保存エネルギー $E_{emb}$')
+# --- プロット 1: TDVP 保存エネルギー ---
+ax_norm.plot(sol.t, E_tot_t, color='black', linewidth=1.5)
+ax_norm.axhline(E_tot_t[0], color='gray', linestyle='--', linewidth=0.8,
+                label=f'初期値 $E_0={E_tot_t[0]:.4f}$')
+ax_norm.set_ylabel(r'$E_{\rm tot}=\langle H_{\rm emb}^0\rangle - {\rm Tr}(n\,RH_{\rm phys}R^\dagger)$')
 ax_norm.set_xlabel(r'時刻 $t$')
 ax_norm.legend()
-E_mean = np.mean(E_emb_t)
+E_mean = np.mean(E_tot_t)
 ax_norm.set_ylim([E_mean - 0.01, E_mean + 0.01])
 
 # --- プロット 2: 準粒子占有数 ---
