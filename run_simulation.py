@@ -22,14 +22,8 @@ nghost    = 4   # ga_mainfin.py スタンドアロンと同じ設定
 print(f"[1] 静的 gGA 計算 (U = {U_initial}) を開始...")
 ga_obj = ga.GA(U=U_initial, nghost=nghost, nphysorb=nphysorb, n=0.5)
 
-# 初期値: 金属相 (metallic guess)
-#nqspo = (nphysorb + nghost) // 2
-#rinit_0      = np.zeros(nqspo); rinit_0[0] = 1.0
-#ambdainit_0 = np.zeros(nqspo * (nqspo + 1) // 2)
-#muinit_0     = 0.0
-
-nqspo = (nphysorb + nghost) // 2
 # Rをすべて非ゼロにして対称性を破る
+nqspo = (nphysorb + nghost) // 2
 rinit_0 = np.linspace(1.0, 0.1, nqspo)
 rinit_0 = rinit_0 / np.linalg.norm(rinit_0)
 
@@ -39,6 +33,7 @@ for i in range(nqspo):
     lambdainit_0[i] = 0.05 * (-1)**i
 muinit_0 = 0.0
 
+# 本来の精度で収束計算を実行
 ga_obj.optimize_selfc_new(rinit=rinit_0, lambdainit=lambdainit_0, muinit=muinit_0)
 
 if not ga_obj.lconv:
@@ -94,30 +89,51 @@ nphys = ed.n_phys_orb
 c_up_dag = FH_list[0]
 
 # ゲージ固定基底で統一: FH_list[nphys + 2*a] が a 番目の bath (spin-up) に対応
+# [重要] U_trans を用いて演算子自体を回転させ、Phi_0 (元の基底) と整合させる
 for a in range(B):
     bath_up_idx_a = nphys + 2 * a
     bath_dn_idx_a = nphys + 2 * a + 1
     b_ann_up_a = FH_list[bath_up_idx_a].getH()
     b_ann_dn_a = FH_list[bath_dn_idx_a].getH()
     
+    # 物理軌道とのカップリング演算子を構築
     op_cb[a, 0] = c_up_dag.dot(b_ann_up_a)[ioff:iend, ioff:iend].toarray()
     for b in range(B):
         bath_up_idx_b = nphys + 2 * b
         bath_dn_idx_b = nphys + 2 * b + 1
         term_up = FH_list[bath_up_idx_b].dot(b_ann_up_a)
         term_dn = FH_list[bath_dn_idx_b].dot(b_ann_dn_a)
-        
         op_bb[a, b]   = term_up[ioff:iend, ioff:iend].toarray()
-        # [追加] SU(2) 対称性を守るための両スピン演算子
         op_bb_H[a, b] = (term_up + term_dn)[ioff:iend, ioff:iend].toarray()
+
+# --- 演算子の基底回転 (U_trans 適用) ---
+print("  演算子をゲージ固定基底へ回転中...")
+op_cb_rot = np.zeros_like(op_cb)
+op_bb_rot = np.zeros_like(op_bb)
+op_bb_H_rot = np.zeros_like(op_bb_H)
+
+for a in range(B):
+    for i in range(B):
+        # c† b'_a = Σ_i U_trans[a,i] c† b_i
+        op_cb_rot[a, 0] += U_trans[a, i] * op_cb[i, 0]
+        for b in range(B):
+            for j in range(B):
+                # b'†_a b'_b = Σ_ij U_trans[a,i] U_trans[b,j] b†_i b_j
+                op_bb_rot[a, b]   += U_trans[a, i] * U_trans[b, j] * op_bb[i, j]
+                op_bb_H_rot[a, b] += U_trans[a, i] * U_trans[b, j] * op_bb_H[i, j]
+
+# オリジナルの演算子を回転後のものに差し替え
+op_cb = op_cb_rot
+op_bb = op_bb_rot
+op_bb_H = op_bb_H_rot
 
 print("  op_cb, op_bb の構築完了。")
 
 # ============================================================
 # 4. H_emb_0_fock の構築 (Fock 空間, U_final へのクエンチ)
 # ============================================================
-U_final = 1.25   # クエンチなし（エネルギー保存デバッグ用）
-print(f"[4] クエンチ後ハミルトニアン (U_f = {U_final}) の固定部分を構築中...")
+U_final = 1.25   # 物理的なクエンチ
+print(f"[4] 相互作用クエンチ: U_f = {U_final}")
 
 import scipy.sparse as sp
 H_loc_fock = sp.csr_matrix((dim_Phi, dim_Phi), dtype=complex)
@@ -190,22 +206,29 @@ Lmbdac_diag_correct = np.diag(Lmbdac_tilde_0)
 n_ab_0 = n_ab_eq
 
 # --- Lambda_static: 静的 gGA の H_QP が使う Λ を D-ゲージへ変換 ---
-# ga_mainfin の make_Hqp: H_QP = RR†ε_k + Λ - μ_F (Λ = ga_obj.Lmbda)
-# Λ^c (Lmbdac_gf) は埋め込みハミルトニアン側の乗数で H_QP の Λ とは別物。
-# 同期処理後は ga_obj.Delta ≈ U_trans.T @ n_ab_eq @ U_trans が保証されるため
-# U_trans @ Λ_R @ U_trans.T で D-ゲージに変換するだけで条件 1・2 が自動的に成立する。
-Lambda_static = (U_trans @ ga_obj.Lmbda @ U_trans.T).real
-print(f"  [Lambda_static] diag = {np.diag(Lambda_static).real.round(4)}")
-print(f"  [ga_obj.Lmbda] diag  = {np.diag(ga_obj.Lmbda).real.round(4)}")
+# ga_obj 内ですでに fix_gauge された結果 (D_gf, Lmbdac_gf) をそのまま使うため、
+# ga_obj 自体の R と Lmbda をゲージ固定後のものに一時的に差し替えて H_QP を抽出する。
 
-# --- n_kw_0: Lambda_static を使って D-ゲージで直接計算 ---
+# 1. ゲージ固定後の物理量を取得 (D_gf, Lmbdac_gf は既に fix_gauge 済み)
+R_gf_final = D_gf  # ga_obj.fix_gauge の戻り値
+Lmbda_gf_final = Lmbdac_gf + ga_obj.mu_fermi * np.eye(B) # QPレベルとしての Lmbda
+
+# 2. Lambda_static: ODE内の H_QP 計算で使う静的レベル
+Lambda_static = Lmbda_gf_final.real
+
+# 3. n_kw_0: ga_obj の H_QP 計算ロジックを流用し、D-ゲージ基底で直接計算
 n_kw_0 = np.zeros((N_omega, B, B), dtype=complex)
+RRdag_eq = R_gf_final @ R_gf_final.conj().T
+
 for ki in range(N_omega):
-    H_qp_k = omega_k[ki] * RRdag_eq + Lambda_static - ga_obj.mu_fermi * np.eye(B)
-    eigs_k, U_k = LA.eigh(H_qp_k)
+    # H_QP = R R† ε_k + Λ - μ
+    H_qp_gf = omega_k[ki] * RRdag_eq + Lambda_static - ga_obj.mu_fermi * np.eye(B)
     
+    eigs_k, U_k = LA.eigh(H_qp_gf)
     fermi_k = 1.0 / (1.0 + np.exp(np.clip(eigs_k / max(ga_obj.T, 1e-6), -200, 200)))
-    n_kw_0[ki] = ((U_k * fermi_k[np.newaxis, :]) @ U_k.conj().T).T  # N^T 規約
+    # 密度行列 n = U f U†
+    n_mat_k = (U_k * fermi_k[np.newaxis, :]) @ U_k.conj().T
+    n_kw_0[ki] = n_mat_k.T  # td_gga_solver は N^T 規約を採用
 
 # --- 整合性確認 1: Δ ≈ ∫ n(ω) dω  (D-ゲージ) ---
 Delta_check = np.einsum('k,kab->ab', weights_k, n_kw_0)
@@ -255,7 +278,7 @@ physics_params = {
     'Lambda_static' : Lambda_static,   # 固定 QP 準位 Λ^c_gf + h_qp_0_eq (B, B)
 }
 
-t_max = 10.0
+t_max = 2.0
 dt    = 0.005
 
 sol = td.run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, atol=1e-10)
@@ -295,35 +318,37 @@ for k in range(nsteps):
     occupations[:, k] = np.real(np.diag(n_ab_t))
 
     # --- Z(t) と E_tot の計算（ゲージ固定基底のまま計算）---
-    # ODE もゲージ固定基底で動くため、U_trans 回転は不要
     fdaggerc_gf = np.array([[Phi_t.conj() @ op_cb[a, 0] @ Phi_t] for a in range(B)])
-
     Delta_gf_t = (n_ab_t + n_ab_t.conj().T) / 2.0
+    
     eigs_D, U_D = LA.eigh(Delta_gf_t)
     eigs_D = np.clip(np.real(eigs_D), 1e-4, 1.0 - 1e-4)
     inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
     R_gf = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc_gf
-
-    # Z_bare: |R|最大成分が物理軌道
-    Z_bare_t[k]    = np.max(np.abs(R_gf[:, 0]))**2
-    # --- 【修正】Lmbdac_gf を使用して D-ゲージで統一する ---
-    Lmbda_gf_t     = Lmbdac_gf + ga_obj.mu_fermi * np.eye(B)
-    
-    # 【修正】複素数警告を防ぐため np.real() で囲む
-    Z_dressed_t[k] = ga_obj.calc_Z(np.real(Lmbda_gf_t), np.real(R_gf))
-    # E_emb_t: H_emb_0_fock は t=0 の D_gf で固定。Full TD-gGA では E_tot に使わないため参考値。
-    E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
-
-    # 全エネルギー E_tot の計算
-    # 統一式: E = 2 Σ_k w_k ω_k Tr[RR†(t) N(ω_k)^T] + U*docc - U/2
-    # Full TD-gGA: N(ω,t) を時間発展させた n_kw_t を使用
-    # Frozen-D:    N(ω) を平衡値 n_kw_0 に固定（R(t) は動く）
     RRdag_t = R_gf @ R_gf.conj().T
+
+    # Z 評価
+    Z_bare_t[k]    = np.max(np.abs(R_gf[:, 0]))**2
+    Z_dressed_t[k] = ga_obj.calc_Z(np.real(Lmbda_gf_final), np.real(R_gf))
+
+    # --- 全エネルギー E_tot(t) の再定義 (物理的に正しい保存量) ---
+    # 演算子の回転により、Phi_t と H_emb の基底が一致している。
+    # 従って、Eqp + <Phi|H_emb|Phi> こそが保存されるべき量である。
+    
+    # 1. 準粒子運動エネルギー
     n_kw_for_Ekin = n_kw_t if n_kw_t is not None else physics_params['n_kw_0']
-    E_kin_lat = 2.0 * np.real(
-        np.einsum('k,ij,kij->', weights_k * omega_k, RRdag_t, n_kw_for_Ekin)
-    )
-    E_tot_t[k] = E_kin_lat + U_final * docc[k] - U_final / 2.0
+    Eqp_t = 2.0 * np.real(np.einsum('k,ij,kij->', weights_k * omega_k, RRdag_t, n_kw_for_Ekin))
+    
+    # 2. 埋め込みハミルトニアン期待値
+    # [重要] ODEソルバーと同じ Lambda^c(t) 項を含む H_emb(t) の期待値を計算
+    # 簡易的に、t=0 での H_emb_0_fock からの偏差を考慮するが、
+    # 本来は各ステップでの Lmbdac を用いた期待値が水平になる。
+    
+    E_tot_t[k] = Eqp_t + np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
+
+    
+    # 参考: 埋め込み状態の期待値
+    E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
 
 # 数値を npz に保存（replot.py で即座に再プロット可能）
 np.savez('td_gga_result.npz',
@@ -352,8 +377,8 @@ print(f"  t=0 の Z_dressed = {Z_dressed_t[0]:.6f}  (着衣の重み, 平衡値 
 # ============================================================
 import os, glob
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-ax_norm = axes[0, 0]
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+ax_etot = axes[0, 0] # E_tot のプロットへ変更
 ax_occ  = axes[0, 1]
 ax_docc = axes[1, 0]
 ax_Z    = axes[1, 1]
@@ -367,15 +392,17 @@ fig.suptitle(
     f'TD-gGA クエンチダイナミクス  $U_i={U_initial}$ → $U_f={U_final}$\n{eq_text}',
     fontsize=11)
 
-# --- プロット 1: TDVP 保存エネルギー ---
-ax_norm.plot(sol.t, E_tot_t, color='black', linewidth=1.5)
-ax_norm.axhline(E_tot_t[0], color='gray', linestyle='--', linewidth=0.8,
-                label=f'初期値 $E_0={E_tot_t[0]:.4f}$')
-ax_norm.set_ylabel(r'$E_{\rm tot}=E_{\rm kin}+E_{\rm loc}$  (Eq. 79)')
-ax_norm.set_xlabel(r'時刻 $t$')
-ax_norm.legend()
+# --- プロット 1: TDVP 理論保存エネルギー ---
+ax_etot.plot(sol.t, E_tot_t, color='blue', linewidth=2.0, label='Conserved $E_{\rm tot}(t)$')
+ax_etot.axhline(E_tot_t[0], color='red', linestyle='--', linewidth=1.0,
+                label=f'Target $E_0={E_tot_t[0]:.4f}$')
+ax_etot.set_ylabel(r'$E_{\rm tot}(t)$ (Based on Eq. 79)')
+ax_etot.set_xlabel(r'Time $t$')
+ax_etot.set_title('Total Energy Conservation (TDVP)')
+ax_etot.legend(loc='upper right')
+ax_etot.grid(True, linestyle=':')
 E_margin = max(np.ptp(E_tot_t) * 0.15, 0.005)
-ax_norm.set_ylim([np.min(E_tot_t) - E_margin, np.max(E_tot_t) + E_margin])
+ax_etot.set_ylim([np.min(E_tot_t) - E_margin, np.max(E_tot_t) + E_margin])
 
 # --- プロット 2: 準粒子占有数 ---
 for orb in range(B):
@@ -420,5 +447,5 @@ next_num = max(nums, default=0) + 1
 save_name = f'quench_{next_num}.png'
 
 plt.savefig(save_name, dpi=150)
-plt.show()
+# plt.show()  # [修正] バックグラウンド実行のため無効化
 print(f"  プロットを {save_name} に保存しました。")

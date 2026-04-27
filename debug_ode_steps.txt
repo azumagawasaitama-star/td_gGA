@@ -1,0 +1,273 @@
+/Users/azumagawayoshito/Desktop/gemini-workspace/td_gGA/convenience_routines.py:22: RuntimeWarning: overflow encountered in exp
+  return 1.0 / (1.0 + np.exp(x / T))
+成功: 日本語フォント 'Hiragino Sans CNS' をロードしました。
+[1] 静的 gGA 計算 (U = 0.1) を開始...
+  [FAST MODE] 収束判定を無視して ODE 計算へ進みます...
+####### ITERATION  1 #######
+Initial mu 0.0
+Initial R
+[[0.87287156]
+ [0.48007936]
+ [0.08728716]]
+Initial Lambda
+[[ 0.05  0.    0.  ]
+ [ 0.   -0.05  0.  ]
+ [ 0.    0.    0.05]]
+[ 0.05 -0.05  0.05  0.    0.    0.  ]
+    F1, F2 Micro-It. 1: F1, F2=  0.8907070257494064 0.990762945101224
+    F1, F2 Micro-It. 2: F1, F2=  0.8907070648889662 0.9907629451652662
+    F1, F2 Micro-It. 3: F1, F2=  0.8907069540114141 0.9907629449377353
+    F1, F2 Micro-It. 4: F1, F2=  0.890707026140848 0.9907629452651346
+    F1, F2 Micro-It. 5: F1, F2=  0.8907069508200357 0.9907629448903773
+    F1, F2 Micro-It. 6: F1, F2=  0.8907070312848966 0.9907629462647081
+    F1, F2 Micro-It. 7: F1, F2=  0.8907070182560266 0.9907629448453423
+F1, F2 Microiterations converged in 7 iterations
+Max. error 1,   0.11258257907607866
+####### ITERATION  2 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9423234216865586 0.9904258268014373
+    F1, F2 Micro-It. 2: F1, F2=  0.9423233975722026 0.9904258267975973
+    F1, F2 Micro-It. 3: F1, F2=  0.9423234285943377 0.9904258268036434
+    F1, F2 Micro-It. 4: F1, F2=  0.9423234217556455 0.9904258268644782
+    F1, F2 Micro-It. 5: F1, F2=  0.9423234034359836 0.990425826763634
+    F1, F2 Micro-It. 6: F1, F2=  0.9423234198613766 0.9904258271663492
+    F1, F2 Micro-It. 7: F1, F2=  0.9423234226635305 0.99042582724733
+F1, F2 Microiterations converged in 7 iterations
+Max. error 2,   0.12155864048696846
+####### ITERATION  3 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9557019144711709 0.9902998674918477
+    F1, F2 Micro-It. 2: F1, F2=  0.9557018987068492 0.9902998674997281
+    F1, F2 Micro-It. 3: F1, F2=  0.9557019170307267 0.9902998674916202
+    F1, F2 Micro-It. 4: F1, F2=  0.9557019144967694 0.990299867525554
+    F1, F2 Micro-It. 5: F1, F2=  0.9557019054888317 0.99029986747809
+    F1, F2 Micro-It. 6: F1, F2=  0.9557019135728846 0.9902998678840607
+    F1, F2 Micro-It. 7: F1, F2=  0.9557019148331671 0.9902998677301577
+F1, F2 Microiterations converged in 7 iterations
+Max. error 3,   0.09780671774835942
+####### ITERATION  4 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9611851379006545 0.9902187661887073
+    F1, F2 Micro-It. 2: F1, F2=  0.9611851250791131 0.9902187661959698
+    F1, F2 Micro-It. 3: F1, F2=  0.961185139156871 0.9902187661884904
+    F1, F2 Micro-It. 4: F1, F2=  0.9611851379132181 0.9902187662087504
+    F1, F2 Micro-It. 5: F1, F2=  0.961185132225577 0.9902187661825302
+    F1, F2 Micro-It. 6: F1, F2=  0.9611851373331101 0.9902187665338424
+    F1, F2 Micro-It. 7: F1, F2=  0.9611851380783211 0.9902187663304094
+F1, F2 Microiterations converged in 7 iterations
+Max. error 4,   0.07485279076377682
+####### ITERATION  5 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9638451600196252 0.9901704794111668
+    F1, F2 Micro-It. 2: F1, F2=  0.9638451485250449 0.9901704794166425
+    F1, F2 Micro-It. 3: F1, F2=  0.9638451607439216 0.9901704794110499
+    F1, F2 Micro-It. 4: F1, F2=  0.9638451600268688 0.9901704794240032
+    F1, F2 Micro-It. 5: F1, F2=  0.9638451559394916 0.9901704794080237
+    F1, F2 Micro-It. 6: F1, F2=  0.9638451596115841 0.990170479704507
+    F1, F2 Micro-It. 7: F1, F2=  0.9638451601220621 0.99017047950192
+F1, F2 Microiterations converged in 7 iterations
+Max. error 5,   0.05516276109820703
+####### ITERATION  6 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9652565477238823 0.9901427284075728
+    F1, F2 Micro-It. 2: F1, F2=  0.9652565369066584 0.9901427284116384
+    F1, F2 Micro-It. 3: F1, F2=  0.9652565481925759 0.9901427284075106
+    F1, F2 Micro-It. 4: F1, F2=  0.9652565477285697 0.9901427284163881
+    F1, F2 Micro-It. 5: F1, F2=  0.9652565445398894 0.9901427284057892
+    F1, F2 Micro-It. 6: F1, F2=  0.9652565474054632 0.990142728658329
+    F1, F2 Micro-It. 7: F1, F2=  0.9652565477901691 0.9901427284698983
+F1, F2 Microiterations converged in 7 iterations
+Max. error 6,   0.03963205918319129
+####### ITERATION  7 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9660510664861485 0.9901269638522694
+    F1, F2 Micro-It. 2: F1, F2=  0.9660510560420779 0.9901269638553869
+    F1, F2 Micro-It. 3: F1, F2=  0.9660510668190774 0.9901269638522336
+    F1, F2 Micro-It. 4: F1, F2=  0.9660510664894779 0.9901269638587524
+    F1, F2 Micro-It. 5: F1, F2=  0.9660510638493297 0.990126963851146
+    F1, F2 Micro-It. 6: F1, F2=  0.9660510662224475 0.9901269640710478
+    F1, F2 Micro-It. 7: F1, F2=  0.9660510665332342 0.990126963898106
+F1, F2 Microiterations converged in 7 iterations
+Max. error 7,   0.02799535695286859
+####### ITERATION  8 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9665187816168715 0.9901175785246452
+    F1, F2 Micro-It. 2: F1, F2=  0.9665187713897206 0.9901175785271495
+    F1, F2 Micro-It. 3: F1, F2=  0.9665187818726213 0.9901175785246225
+    F1, F2 Micro-It. 4: F1, F2=  0.9665187816194345 0.9901175785297298
+    F1, F2 Micro-It. 5: F1, F2=  0.9665187793299582 0.9901175785238654
+    F1, F2 Micro-It. 6: F1, F2=  0.9665187813881811 0.990117578720354
+    F1, F2 Micro-It. 7: F1, F2=  0.9665187816530392 0.9901175785605965
+F1, F2 Microiterations converged in 7 iterations
+Max. error 8,   0.019552129925705736
+####### ITERATION  9 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9668041346554213 0.9901130435513188
+    F1, F2 Micro-It. 2: F1, F2=  0.9668041245596136 0.9901130435534287
+    F1, F2 Micro-It. 3: F1, F2=  0.9668041348650704 0.9901130435513028
+    F1, F2 Micro-It. 4: F1, F2=  0.9668041346575178 0.9901130435555415
+    F1, F2 Micro-It. 5: F1, F2=  0.9668041325981738 0.9901130435507289
+    F1, F2 Micro-It. 6: F1, F2=  0.9668041344496815 0.990113043730763
+    F1, F2 Micro-It. 7: F1, F2=  0.9668041346850719 0.9901130435811746
+F1, F2 Microiterations converged in 7 iterations
+Max. error 9,   0.013551593721613464
+####### ITERATION  10 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9669832886001123 0.9901086787276318
+    F1, F2 Micro-It. 2: F1, F2=  0.9669832785863787 0.9901086787294856
+    F1, F2 Micro-It. 3: F1, F2=  0.966983288781207 0.9901086787276194
+    F1, F2 Micro-It. 4: F1, F2=  0.9669832886019238 0.990108678731309
+    F1, F2 Micro-It. 5: F1, F2=  0.9669832866958759 0.9901086787271525
+    F1, F2 Micro-It. 6: F1, F2=  0.9669832884096801 0.9901086788957276
+    F1, F2 Micro-It. 7: F1, F2=  0.9669832886257241 0.990108678753632
+F1, F2 Microiterations converged in 7 iterations
+Max. error 10,   0.00934403856256702
+####### ITERATION  11 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9670983218099736 0.9901071359882649
+    F1, F2 Micro-It. 2: F1, F2=  0.9670983118487819 0.9901071359899509
+    F1, F2 Micro-It. 3: F1, F2=  0.9670983219728917 0.9901071359882548
+    F1, F2 Micro-It. 4: F1, F2=  0.9670983218116029 0.9901071359915901
+    F1, F2 Micro-It. 5: F1, F2=  0.9670983200085755 0.9901071359878528
+    F1, F2 Micro-It. 6: F1, F2=  0.9670983216298396 0.9901071361485021
+    F1, F2 Micro-It. 7: F1, F2=  0.967098321833013 0.9901071360117772
+F1, F2 Microiterations converged in 7 iterations
+Max. error 11,   0.0064203245348258
+####### ITERATION  12 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9671734573115807 0.9901072805503335
+    F1, F2 Micro-It. 2: F1, F2=  0.967173447384641 0.9901072805519082
+    F1, F2 Micro-It. 3: F1, F2=  0.9671734574626921 0.9901072805503246
+    F1, F2 Micro-It. 4: F1, F2=  0.9671734573130915 0.9901072805534279
+    F1, F2 Micro-It. 5: F1, F2=  0.9671734555796679 0.9901072805499636
+    F1, F2 Micro-It. 6: F1, F2=  0.9671734571384064 0.9901072807051589
+    F1, F2 Micro-It. 7: F1, F2=  0.9671734573329487 0.9901072805722159
+F1, F2 Microiterations converged in 7 iterations
+Max. error 12,   0.004400972670731987
+####### ITERATION  13 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9672231585871824 0.9901077032682878
+    F1, F2 Micro-It. 2: F1, F2=  0.9672231486828713 0.9901077032697886
+    F1, F2 Micro-It. 3: F1, F2=  0.967223158730513 0.9901077032682797
+    F1, F2 Micro-It. 4: F1, F2=  0.9672231585886163 0.9901077032712298
+    F1, F2 Micro-It. 5: F1, F2=  0.9672231569023746 0.9901077032679447
+    F1, F2 Micro-It. 6: F1, F2=  0.96722315841871 0.9901077034194141
+    F1, F2 Micro-It. 7: F1, F2=  Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u9759' [U+9759], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u72b6' [U+72b6], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u9759' [U+9759], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u72b6' [U+72b6], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u5024' [U+5024], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u9759' [U+9759], substituting with a dummy symbol.
+Font 'default' does not have a glyph for '\u72b6' [U+72b6], substituting with a dummy symbol.
+2026-04-27 12:42:30.480 Python[7745:118145] +[IMKClient subclass]: chose IMKClient_Modern
+2026-04-27 12:42:30.480 Python[7745:118145] +[IMKInputSession subclass]: chose IMKInputSession_Modern
+0.9672231586074522 0.9901077032890919
+F1, F2 Microiterations converged in 7 iterations
+Max. error 13,   0.0030119999155141935
+####### ITERATION  14 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9672563383918729 0.9901061158870677
+    F1, F2 Micro-It. 2: F1, F2=  0.9672563285026545 0.9901061158885192
+    F1, F2 Micro-It. 3: F1, F2=  0.9672563385300208 0.9901061158870601
+    F1, F2 Micro-It. 4: F1, F2=  0.9672563383932541 0.9901061158899082
+    F1, F2 Micro-It. 5: F1, F2=  0.9672563367390624 0.9901061158867424
+    F1, F2 Micro-It. 6: F1, F2=  0.9672563382265849 0.9901061160356677
+    F1, F2 Micro-It. 7: F1, F2=  0.96725633841141 0.990106115907152
+F1, F2 Microiterations converged in 7 iterations
+Max. error 14,   0.002059095837070604
+####### ITERATION  15 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.967278633841028 0.9901040956253792
+    F1, F2 Micro-It. 2: F1, F2=  0.9672786239619463 0.9901040956267972
+    F1, F2 Micro-It. 3: F1, F2=  0.9672786339756995 0.990104095625372
+    F1, F2 Micro-It. 4: F1, F2=  0.9672786338423751 0.9901040956281512
+    F1, F2 Micro-It. 5: F1, F2=  0.9672786322099827 0.9901040956250655
+    F1, F2 Micro-It. 6: F1, F2=  0.9672786336779136 0.9901040957722458
+    F1, F2 Micro-It. 7: F1, F2=  0.9672786338600743 0.9901040956449788
+F1, F2 Microiterations converged in 7 iterations
+Max. error 15,   0.0014065232720648635
+####### ITERATION  16 #######
+    F1, F2 Micro-It. 1: F1, F2=  0.9672936843794927 0.9901034115406713
+    F1, F2 Micro-It. 2: F1, F2=  0.9672936745072499 0.9901034115420668
+    F1, F2 Micro-It. 3: F1, F2=  0.9672936845118197 0.9901034115406644
+    F1, F2 Micro-It. 4: F1, F2=  0.9672936843808155 0.9901034115433973
+    F1, F2 Micro-It. 5: F1, F2=  0.9672936827632641 0.9901034115403655
+    F1, F2 Micro-It. 6: F1, F2=  0.9672936842178491 0.9901034116863608
+    F1, F2 Micro-It. 7: F1, F2=  0.9672936843982077 0.9901034115599444
+F1, F2 Microiterations converged in 7 iterations
+Max. error 16,   0.0009603596546914062
+WARNING: F2 not converged 1.0005984011414792
+  収束完了。
+  B = 3, dim_Phi = 70
+  ||Phi_0|| = 1.000000  (≈ 1 が正常)
+  U_trans:
+[[ 0.      0.0995 -0.995 ]
+ [ 0.9033 -0.4269 -0.0427]
+ [ 0.429   0.8988  0.0899]]
+  D_gf: [-0.       -0.292328 -0.341224]
+[3] フォック空間演算子を構築中...
+  op_cb, op_bb の構築完了。
+[4] クエンチなし（デバッグモード）: U_f = 0.1
+  H_emb_0_fock の形状: (70, 70)
+[5] TD-gGA ダイナミクスを実行中...
+  [診断] ga_obj.Delta対角  : [0.5288 0.0039 0.    ]
+  [診断] n_ab_0 対角       : [0.     0.6313 0.8688]
+  [診断] Delta_eq 対角     : [0.     0.6313 0.8688]
+  [診断] Delta_check 対角  : [1.     0.9791 0.0209]
+  [診断] ||n_ab_0-Delta_eq||: 1.010e-28
+  [診断] Σw_k              : 1.000000  (≈1.0 が正常)
+  整合性確認 1: ||Δ_eq - ∫n(ω)dω|| = 1.393e+00  (≈0 が正常)
+  [診断] D_gf       = [-0.     -0.2923 -0.3412]
+  [診断] D_from_nkw = [ 0.    +0.j  1.6713+0.j -3.0423+0.j]
+  整合性確認 2: ||D_gf - D_check|| = 3.339e+00  (≈0 が正常)
+  [DEBUG ODE] t=0.0000, E_tot=-0.08564869
+  [DEBUG ODE] t=0.0004, E_tot=-0.08567737
+  [DEBUG ODE] t=0.0012, E_tot=-0.08591415
+  [DEBUG ODE] t=0.0018, E_tot=-0.08619195
+  [DEBUG ODE] t=0.0048, E_tot=-0.08948824
+  [DEBUG ODE] t=0.0054, E_tot=-0.09036116
+  [DEBUG ODE] t=0.0060, E_tot=-0.09161416
+  [DEBUG ODE] t=0.0060, E_tot=-0.09165314
+  [DEBUG ODE] t=0.0074, E_tot=-0.09463443
+  [DEBUG ODE] t=0.0081, E_tot=-0.09628420
+  [DEBUG ODE] t=0.0114, E_tot=-0.10676613
+  [DEBUG ODE] t=0.0120, E_tot=-0.10891848
+  [DEBUG ODE] t=0.0128, E_tot=-0.11184334
+  [DEBUG ODE] t=0.0128, E_tot=-0.11194487
+  [DEBUG ODE] t=0.0142, E_tot=-0.11795676
+  [DEBUG ODE] t=0.0149, E_tot=-0.12107587
+  [DEBUG ODE] t=0.0184, E_tot=-0.13889270
+  [DEBUG ODE] t=0.0190, E_tot=-0.14228446
+  [DEBUG ODE] t=0.0198, E_tot=-0.14679706
+  [DEBUG ODE] t=0.0198, E_tot=-0.14695477
+  [DEBUG ODE] t=0.0213, E_tot=-0.15611951
+  [DEBUG ODE] t=0.0221, E_tot=-0.16072584
+  [DEBUG ODE] t=0.0258, E_tot=-0.18594490
+  [DEBUG ODE] t=0.0265, E_tot=-0.19056762
+  [DEBUG ODE] t=0.0273, E_tot=-0.19664568
+  [DEBUG ODE] t=0.0273, E_tot=-0.19685772
+  [DEBUG ODE] t=0.0290, E_tot=-0.20922142
+  [DEBUG ODE] t=0.0298, E_tot=-0.21528606
+  [DEBUG ODE] t=0.0339, E_tot=-0.24773087
+  [DEBUG ODE] t=0.0346, E_tot=-0.25353576
+  [DEBUG ODE] t=0.0355, E_tot=-0.26109364
+  [DEBUG ODE] t=0.0355, E_tot=-0.26134641
+  [DEBUG ODE] t=0.0373, E_tot=-0.27673253
+  [DEBUG ODE] t=0.0382, E_tot=-0.28411189
+  [DEBUG ODE] t=0.0427, E_tot=-0.32300540
+  [DEBUG ODE] t=0.0434, E_tot=-0.32984728
+  [DEBUG ODE] t=0.0444, E_tot=-0.33865722
+  [DEBUG ODE] t=0.0444, E_tot=-0.33891495
+  [DEBUG ODE] t=0.0456, E_tot=-0.34892644
+  [DEBUG ODE] t=0.0461, E_tot=-0.35375909
+  [DEBUG ODE] t=0.0489, E_tot=-0.37855329
+  [DEBUG ODE] t=0.0494, E_tot=-0.38294117
+  [DEBUG ODE] t=0.0500, E_tot=-0.38845209
+  [DEBUG ODE] t=0.0500, E_tot=-0.38848344
+  ODE 求解成功。ステップ数: 10
+[6] 物理量を計算中...
+
+==================================================
+  平衡状態サマリー (U_i = 0.1)
+==================================================
+  Z        = 0.946834
+  d (docc) = 0.242273
+  n_ab (対角) = ['0.0000', '0.6313', '0.8688']
+  ||Phi_0|| = 1.0000000000
+  dim_Phi   = 70,  B = 3
+==================================================
+  t=0 の d(t) = 0.242273  (平衡値と一致するか確認)
+  t=0 の Z_bare    = 0.732408  (裸の重み |R[0,0]|²)
+  t=0 の Z_dressed = 0.531216  (着衣の重み, 平衡値 Z=0.946834 と比較)
+  プロットを quench_85.png に保存しました。

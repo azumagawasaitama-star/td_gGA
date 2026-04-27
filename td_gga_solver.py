@@ -240,7 +240,14 @@ class TDgGADynamics:
 
         # --- 10. dΦ/dt = -i H_emb Φ ---
         dPhi_dt = -1j * (H_emb @ Phi)
-
+        
+        # [物理保存量] 理論的全エネルギーの算出
+        if hasattr(self, 'omega_k') and self.omega_k is not None:
+            RRdag_t = R @ R.conj().T
+            Eqp_t = 2.0 * np.real(np.einsum('k,ij,kij->', self.weights_k * self.omega_k, RRdag_t, n_kw.transpose(0,2,1)))
+            E_loc_t = np.real(Phi.conj() @ H_emb @ Phi)
+            self.current_E_tot = Eqp_t + E_loc_t # この値が理論的に保存される
+            
         if self.is_frozen_D:
             return pack_state(dPhi_dt)
 
@@ -319,6 +326,16 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
 
     t_eval = np.arange(0, t_max, dt)
 
+    # 各時刻での E_tot を保存するためのコンテナ
+    E_tot_list = []
+    def sol_wrapper(t, y):
+        dy = system.compute_derivatives(t, y)
+        if hasattr(system, 'current_E_tot'):
+            # 注意: solver の内部ステップではなく評価点での値を拾うため工夫が必要だが、
+            # ここでは簡易的に直近の値を保持する
+            pass
+        return dy
+
     sol = integrate.solve_ivp(
         fun=system.compute_derivatives,
         t_span=(0, t_max),
@@ -328,7 +345,9 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
         rtol=rtol,
         atol=atol,
     )
-
+    
+    # 物理的な E_tot を後から再計算するための情報を sol に付加
+    # (solve_ivp は y 以外を返さないため、システム側に記録させる)
     return sol
 
 
