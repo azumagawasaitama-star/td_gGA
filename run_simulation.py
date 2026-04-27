@@ -15,7 +15,7 @@ import td_gga_solver as td
 # ============================================================
 # 1. 平衡状態の計算 (U_initial)
 # ============================================================
-U_initial = 2.0
+U_initial = 0.1
 nphysorb  = 2
 nghost    = 4   # ga_mainfin.py スタンドアロンと同じ設定
 
@@ -23,10 +23,21 @@ print(f"[1] 静的 gGA 計算 (U = {U_initial}) を開始...")
 ga_obj = ga.GA(U=U_initial, nghost=nghost, nphysorb=nphysorb, n=0.5)
 
 # 初期値: 金属相 (metallic guess)
+#nqspo = (nphysorb + nghost) // 2
+#rinit_0      = np.zeros(nqspo); rinit_0[0] = 1.0
+#ambdainit_0 = np.zeros(nqspo * (nqspo + 1) // 2)
+#muinit_0     = 0.0
+
 nqspo = (nphysorb + nghost) // 2
-rinit_0      = np.zeros(nqspo); rinit_0[0] = 1.0
+# Rをすべて非ゼロにして対称性を破る
+rinit_0 = np.linspace(1.0, 0.1, nqspo)
+rinit_0 = rinit_0 / np.linalg.norm(rinit_0)
+
 lambdainit_0 = np.zeros(nqspo * (nqspo + 1) // 2)
-muinit_0     = 0.0
+# 対角成分にわずかなノイズを入れて縮退を解く
+for i in range(nqspo):
+    lambdainit_0[i] = 0.05 * (-1)**i
+muinit_0 = 0.0
 
 ga_obj.optimize_selfc_new(rinit=rinit_0, lambdainit=lambdainit_0, muinit=muinit_0)
 
@@ -34,6 +45,7 @@ if not ga_obj.lconv:
     print("  警告: 静的計算が収束していません。結果を確認してください。")
 else:
     print("  収束完了。")
+
 
 # ============================================================
 # 2. 初期状態の抽出
@@ -52,7 +64,13 @@ D_gf, Lmbdac_gf, phasemat_fix, permmat_fix, transmat_fix = \
 # U_trans: 元の基底 → ゲージ固定基底 (= T_back^T)
 U_trans = permmat_fix @ phasemat_fix @ transmat_fix.T  # (B, B) 実数直交行列
 Delta_orig = ga_obj.Delta[:B, :B].copy()
-n_ab_0 = U_trans @ Delta_orig @ U_trans.T              # ゲージ固定基底の密度行列
+#n_ab_0 = U_trans @ Delta_orig @ U_trans.T              # ゲージ固定基底の密度行列
+
+# --- 【追加】Lambda^c の対角成分を Delta の固有値基底で正確に抽出 ---
+#Delta_0 = (n_ab_0 + n_ab_0.conj().T) / 2.0
+#eigs_0, U_0 = LA.eigh(Delta_0)
+#Lmbdac_tilde_0 = U_0.conj().T @ Lmbdac_gf @ U_0
+#Lmbdac_diag_correct = np.diag(Lmbdac_tilde_0)
 
 print(f"  B = {B}, dim_Phi = {dim_Phi}")
 print(f"  ||Phi_0|| = {np.linalg.norm(Phi_0):.6f}  (≈ 1 が正常)")
@@ -70,25 +88,35 @@ iend = ioff + ed.hsize_half
 
 op_cb = np.zeros((B, 1, dim_Phi, dim_Phi), dtype=complex)
 op_bb = np.zeros((B, B, dim_Phi, dim_Phi), dtype=complex)
-nphys = ed.n_phys_orb  # = 2 (spin-up=0, spin-dn=1)
+op_bb_H = np.zeros((B, B, dim_Phi, dim_Phi), dtype=complex) # [追加]
+
+nphys = ed.n_phys_orb  
 c_up_dag = FH_list[0]
 
 # ゲージ固定基底で統一: FH_list[nphys + 2*a] が a 番目の bath (spin-up) に対応
 for a in range(B):
-    bath_up_idx = nphys + 2 * a
-    b_ann_a = FH_list[bath_up_idx].getH()
-    op_cb[a, 0] = c_up_dag.dot(b_ann_a)[ioff:iend, ioff:iend].toarray()
+    bath_up_idx_a = nphys + 2 * a
+    bath_dn_idx_a = nphys + 2 * a + 1
+    b_ann_up_a = FH_list[bath_up_idx_a].getH()
+    b_ann_dn_a = FH_list[bath_dn_idx_a].getH()
+    
+    op_cb[a, 0] = c_up_dag.dot(b_ann_up_a)[ioff:iend, ioff:iend].toarray()
     for b in range(B):
-        bath_up_b = nphys + 2 * b
-        b_dag_b = FH_list[bath_up_b]
-        op_bb[a, b] = b_dag_b.dot(b_ann_a)[ioff:iend, ioff:iend].toarray()
+        bath_up_idx_b = nphys + 2 * b
+        bath_dn_idx_b = nphys + 2 * b + 1
+        term_up = FH_list[bath_up_idx_b].dot(b_ann_up_a)
+        term_dn = FH_list[bath_dn_idx_b].dot(b_ann_dn_a)
+        
+        op_bb[a, b]   = term_up[ioff:iend, ioff:iend].toarray()
+        # [追加] SU(2) 対称性を守るための両スピン演算子
+        op_bb_H[a, b] = (term_up + term_dn)[ioff:iend, ioff:iend].toarray()
 
 print("  op_cb, op_bb の構築完了。")
 
 # ============================================================
 # 4. H_emb_0_fock の構築 (Fock 空間, U_final へのクエンチ)
 # ============================================================
-U_final = 2.5
+U_final = 1.25   # クエンチなし（エネルギー保存デバッグ用）
 print(f"[4] クエンチ後ハミルトニアン (U_f = {U_final}) の固定部分を構築中...")
 
 import scipy.sparse as sp
@@ -99,8 +127,8 @@ n_dn_phys = FH_list[1].dot(FH_list[1].getH())
 op_n_phys = (n_up_phys + n_dn_phys)[ioff:iend, ioff:iend]
 H_loc_fock += (-U_final / 2.0) * op_n_phys
 
-# op_D[a] = (c†_up b_{a,up} + h.c.) + (c†_dn b_{a,dn} + h.c.) — Full TD-gGA で D 項を再構成するために使用
-op_D = np.zeros((B, dim_Phi, dim_Phi), dtype=complex)
+# [修正] op_D を op_D_cdagger_b に変更し、片側の演算子のみを保持する
+op_D_cdagger_b = np.zeros((B, dim_Phi, dim_Phi), dtype=complex)
 for a in range(B):
     bath_up_idx = nphys + 2 * a       # ゲージ固定基底: forward indexing
     bath_dn_idx = nphys + 2 * a + 1
@@ -108,12 +136,22 @@ for a in range(B):
     term_dn = FH_list[1].dot(FH_list[bath_dn_idx].getH()) + FH_list[bath_dn_idx].dot(FH_list[1].getH())
     H_loc_fock += D_gf[a, 0] * term_up[ioff:iend, ioff:iend]
     H_loc_fock += D_gf[a, 0] * term_dn[ioff:iend, ioff:iend]
-    op_D[a] = (term_up + term_dn)[ioff:iend, ioff:iend].toarray()
+    
+    # c^\dagger b の片側だけを計算
+    term_up_half = FH_list[0].dot(FH_list[bath_up_idx].getH())
+    term_dn_half = FH_list[1].dot(FH_list[bath_dn_idx].getH())
+    op_D_cdagger_b[a] = (term_up_half + term_dn_half)[ioff:iend, ioff:iend].toarray()
 
 n_up_full = FH_list[0].dot(FH_list[0].getH())
 n_dn_full = FH_list[1].dot(FH_list[1].getH())
 op_docc = n_up_full.dot(n_dn_full)[ioff:iend, ioff:iend].toarray()
 H_loc_fock += U_final * sp.csr_matrix(op_docc)
+
+# [削除] 平衡状態のバスエネルギーを H_loc_fock に足すと二重カウントになるため削除
+# for a in range(B):
+#     for b in range(B):
+#         if abs(Lmbdac_gf[b, a]) > 1e-14:
+#             H_loc_fock += Lmbdac_gf[b, a] * sp.csr_matrix(op_bb_H[a, b])
 
 H_emb_0_fock = H_loc_fock.toarray()
 H_phys_1body = np.array([[-U_final / 2.0]], dtype=complex)
@@ -129,7 +167,7 @@ print("[5] TD-gGA ダイナミクスを実行中...")
 # 5a. Full TD-gGA 初期状態の構築
 # ============================================================
 # ガウス-ルジャンドル積分メッシュ + 半円状態密度 ρ(ω) = (2/π)√(1-ω²)
-N_omega = 100
+N_omega = 300
 x_gl, w_gl = np.polynomial.legendre.leggauss(N_omega)
 omega_k   = x_gl                                                    # (N_omega,)  ∈ [-1, 1]
 rho_k     = (2.0 / np.pi) * np.sqrt(np.maximum(1.0 - omega_k**2, 0.0))
@@ -146,32 +184,57 @@ R_gf_0  = (U_eq * (1.0 / np.sqrt(eigs_eq * (1.0 - eigs_eq)))[np.newaxis, :]) \
            @ U_eq.conj().T @ fdaggerc_eq                            # (B, 1)
 RRdag_eq = R_gf_0 @ R_gf_0.conj().T                                # (B, B)
 
-# --- n_kw_0 を R-ゲージで計算し D-ゲージに変換 ---
-# ga_obj.R, ga_obj.Lmbda は R-ゲージで整合している。
-# R-ゲージで n_kw_0_R を計算してから D-ゲージへ変換: n_kw_0 = U_trans @ n_kw_0_R @ U_trans.T
-RRdag_R = ga_obj.R @ ga_obj.R.conj().T                             # (B, B) R-ゲージ
-n_kw_0_R = np.zeros((N_omega, B, B), dtype=complex)
-for ki in range(N_omega):
-    H_qp_k = omega_k[ki] * RRdag_R + ga_obj.Lmbda                 # R-ゲージ
-    eigs_k, U_k = LA.eigh(H_qp_k)
-    fermi_k = (eigs_k < 0.0).astype(float)
-    n_kw_0_R[ki] = ((U_k * fermi_k[np.newaxis, :]) @ U_k.conj().T).T
+# ★ここから追加：Phi_0由来の正確な情報(U_eq)を使って対角成分を抽出
+Lmbdac_tilde_0 = U_eq.conj().T @ Lmbdac_gf @ U_eq
+Lmbdac_diag_correct = np.diag(Lmbdac_tilde_0)
+n_ab_0 = n_ab_eq
 
-# D-ゲージへ変換: n_kw_0_D[k] = U_trans @ n_kw_0_R[k] @ U_trans.T
-n_kw_0 = np.einsum('ab,kbc,dc->kad', U_trans, n_kw_0_R, U_trans)
+# --- Lambda_static: 静的 gGA の H_QP が使う Λ を D-ゲージへ変換 ---
+# ga_mainfin の make_Hqp: H_QP = RR†ε_k + Λ - μ_F (Λ = ga_obj.Lmbda)
+# Λ^c (Lmbdac_gf) は埋め込みハミルトニアン側の乗数で H_QP の Λ とは別物。
+# 同期処理後は ga_obj.Delta ≈ U_trans.T @ n_ab_eq @ U_trans が保証されるため
+# U_trans @ Λ_R @ U_trans.T で D-ゲージに変換するだけで条件 1・2 が自動的に成立する。
+Lambda_static = (U_trans @ ga_obj.Lmbda @ U_trans.T).real
+print(f"  [Lambda_static] diag = {np.diag(Lambda_static).real.round(4)}")
+print(f"  [ga_obj.Lmbda] diag  = {np.diag(ga_obj.Lmbda).real.round(4)}")
+
+# --- n_kw_0: Lambda_static を使って D-ゲージで直接計算 ---
+n_kw_0 = np.zeros((N_omega, B, B), dtype=complex)
+for ki in range(N_omega):
+    H_qp_k = omega_k[ki] * RRdag_eq + Lambda_static - ga_obj.mu_fermi * np.eye(B)
+    eigs_k, U_k = LA.eigh(H_qp_k)
+    
+    fermi_k = 1.0 / (1.0 + np.exp(np.clip(eigs_k / max(ga_obj.T, 1e-6), -200, 200)))
+    n_kw_0[ki] = ((U_k * fermi_k[np.newaxis, :]) @ U_k.conj().T).T  # N^T 規約
 
 # --- 整合性確認 1: Δ ≈ ∫ n(ω) dω  (D-ゲージ) ---
 Delta_check = np.einsum('k,kab->ab', weights_k, n_kw_0)
+# [診断] 各行列の対角成分を比較
+#Delta_from_nk_orig = np.einsum('k,kba->ab', weights_k, n_kw_0_orig)  # N^T→N で積分
+print(f"  [診断] ga_obj.Delta対角  : {np.diag(ga_obj.Delta[:B,:B]).real.round(4)}")
+print(f"  [診断] n_ab_0 対角       : {np.diag(n_ab_0).real.round(4)}")
+print(f"  [診断] Delta_eq 対角     : {np.diag(Delta_eq).real.round(4)}")
+print(f"  [診断] Delta_check 対角  : {np.diag(Delta_check).real.round(4)}")
+#print(f"  [診断] n_kw_0_orig積分対角: {np.diag(Delta_from_nk_orig).real.round(4)}")
+print(f"  [診断] ||n_ab_0-Delta_eq||: {np.linalg.norm(n_ab_0-Delta_eq):.3e}")
+print(f"  [診断] Σw_k              : {np.sum(weights_k):.6f}  (≈1.0 が正常)")
 print(f"  整合性確認 1: ||Δ_eq - ∫n(ω)dω|| = "
       f"{np.linalg.norm(Delta_eq - Delta_check):.3e}  (≈0 が正常)")
 
 # --- 整合性確認 2: D_gf を Eq.(18) で再現できるか ---
-n_weighted_chk = np.einsum('k,kbc->bc', weights_k * omega_k, n_kw_0)
+# n_kw_0[k] = N^T → 物理 N に戻してから積分する
+N_mat_chk = n_kw_0.transpose(0, 2, 1)  # (N_omega, B, B) 物理 N
+n_weighted_chk = np.einsum('k,kbc->bc', weights_k * omega_k, N_mat_chk)  # ∫ω N dω
 Q_check = n_weighted_chk @ R_gf_0.conj()
 inv_sqrt_eq = 1.0 / np.sqrt(eigs_eq * (1.0 - eigs_eq))
 D_check = (U_eq * inv_sqrt_eq[np.newaxis, :]) @ U_eq.conj().T @ Q_check
+print(f"  [診断] D_gf       = {D_gf.flatten().round(4)}")
+print(f"  [診断] D_from_nkw = {D_check.flatten().round(4)}")
 print(f"  整合性確認 2: ||D_gf - D_check|| = "
       f"{np.linalg.norm(D_gf - D_check):.3e}  (≈0 が正常)")
+
+# ★ここから追加: 真の初期密度行列を、Phi_0 から計算された n_ab_eq に確定する
+n_ab_0 = n_ab_eq
 
 physics_params = {
     'dim_Phi'       : dim_Phi,
@@ -180,12 +243,16 @@ physics_params = {
     'H_phys_1body'  : H_phys_1body,   # h_qp の 0 次項用 1 体物理ブロック (B, B)
     'op_cb'         : op_cb,           # (B, 1, dim_Phi, dim_Phi) c†_al b_a
     'op_bb'         : op_bb,           # (B, B, dim_Phi, dim_Phi) b†_b  b_a
+    'op_bb_H'       : op_bb_H,         # (B, B, dim_Phi, dim_Phi) SU(2)対称な両スピンバス演算子
     'is_frozen_D'   : False,           # Full TD-gGA モード
+    'Lmbdac_diag_correct': Lmbdac_diag_correct,
+    'Lmbdac_gf'     : Lmbdac_gf,
     'D_gf'          : D_gf,            # 平衡ハイブリダイゼーション行列 (B, 1)
-    'op_D'          : op_D,            # (B, dim_Phi, dim_Phi) D 項演算子 (spin-up+dn+h.c.)
+    'op_D_cdagger_b': op_D_cdagger_b,  # (B, dim_Phi, dim_Phi) D 項演算子 (片側のみ)
     'omega_k'       : omega_k,         # (N_omega,) Gauss-Legendre 周波数メッシュ
     'weights_k'     : weights_k,       # (N_omega,) ρ(ω)dω 積分重み
     'n_kw_0'        : n_kw_0,          # (N_omega, B, B) 初期占有行列 n(ω)^T
+    'Lambda_static' : Lambda_static,   # 固定 QP 準位 Λ^c_gf + h_qp_0_eq (B, B)
 }
 
 t_max = 10.0
@@ -237,29 +304,26 @@ for k in range(nsteps):
     inv_sqrt_eigs = 1.0 / np.sqrt(eigs_D * (1.0 - eigs_D))
     R_gf = (U_D * inv_sqrt_eigs[np.newaxis, :]) @ U_D.conj().T @ fdaggerc_gf
 
-    # Z_bare: fix_gauge が permmat でソート済みなので R_gf[0,0] が物理軌道 (|R| 最大)
-    Z_bare_t[k]    = np.abs(R_gf[0, 0])**2
-    # Z_dressed: calc_Z 内部でゲージ固定するので D-ゲージの R_gf をそのまま渡す
-    Z_dressed_t[k] = ga_obj.calc_Z(ga_obj.Lmbda_new, R_gf)
+    # Z_bare: |R|最大成分が物理軌道
+    Z_bare_t[k]    = np.max(np.abs(R_gf[:, 0]))**2
+    # --- 【修正】Lmbdac_gf を使用して D-ゲージで統一する ---
+    Lmbda_gf_t     = Lmbdac_gf + ga_obj.mu_fermi * np.eye(B)
+    
+    # 【修正】複素数警告を防ぐため np.real() で囲む
+    Z_dressed_t[k] = ga_obj.calc_Z(np.real(Lmbda_gf_t), np.real(R_gf))
     # E_emb_t: H_emb_0_fock は t=0 の D_gf で固定。Full TD-gGA では E_tot に使わないため参考値。
     E_emb_t[k] = np.real(Phi_t.conj() @ H_emb_0_fock @ Phi_t)
 
     # 全エネルギー E_tot の計算
-    if n_kw_t is not None:
-        # Full TD-gGA: E = 2 Σ_k w_k ω_k Tr[RR† n_kw[k]] + U*docc - (U/2)*n_phys
-        # 因子2はスピン縮退; n_phys=1 (half-filling)
-        RRdag_t = R_gf @ R_gf.conj().T
-        E_kin_lat = 2.0 * np.real(
-            np.einsum('k,ij,kij->', weights_k * omega_k, RRdag_t, n_kw_t)
-        )
-        E_tot_t[k] = E_kin_lat + U_final * docc[k] - U_final / 2.0
-    else:
-        # Frozen-D: Eq.(79) に基づく従来の計算
-        h_qp_0 = R_gf @ H_phys_1body @ R_gf.conj().T
-        E_kin = np.real(np.trace(n_ab_t @ h_qp_0.T))
-        E_hyb = 4.0 * np.real(np.trace(D_gf.T @ fdaggerc_gf))
-        E_loc = E_emb_t[k] - E_hyb
-        E_tot_t[k] = E_kin + E_loc
+    # 統一式: E = 2 Σ_k w_k ω_k Tr[RR†(t) N(ω_k)^T] + U*docc - U/2
+    # Full TD-gGA: N(ω,t) を時間発展させた n_kw_t を使用
+    # Frozen-D:    N(ω) を平衡値 n_kw_0 に固定（R(t) は動く）
+    RRdag_t = R_gf @ R_gf.conj().T
+    n_kw_for_Ekin = n_kw_t if n_kw_t is not None else physics_params['n_kw_0']
+    E_kin_lat = 2.0 * np.real(
+        np.einsum('k,ij,kij->', weights_k * omega_k, RRdag_t, n_kw_for_Ekin)
+    )
+    E_tot_t[k] = E_kin_lat + U_final * docc[k] - U_final / 2.0
 
 # 数値を npz に保存（replot.py で即座に再プロット可能）
 np.savez('td_gga_result.npz',

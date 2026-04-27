@@ -49,23 +49,7 @@ def unpack_state(Y_flat, dim_Phi, B=None, N_omega=0):
 # ==========================================
 # 2. Lambda_c の直接計算（シルベスター方程式）
 # ==========================================
-def compute_Lambda_c(Delta, K, is_frozen_D=True):
-    """
-    Delta の固有値基底でシルベスター方程式 [Delta, Lambda^c] = K を解き、
-    Lambda^c を返す。対角成分（ゲージ自由度）は 0 とする。
-
-    Parameters
-    ----------
-    Delta       : (B, B) complex ndarray — 局所密度行列（エルミート）
-    K           : (B, B) complex ndarray — 右辺行列
-    is_frozen_D : bool
-        True  → ローレンツ型スムージング ε=1e-4（縮退固有値に頑健）
-        False → ε=1e-12（Full TD-gGA: 縮退が解消されている想定）
-
-    Returns
-    -------
-    Lmbdac : (B, B) complex ndarray
-    """
+def compute_Lambda_c(Delta, K, is_frozen_D=True, Lmbdac_diag=None):
     eigenvalues, U = LA.eigh(Delta)
     K_tilde = U.conj().T @ K @ U
 
@@ -75,13 +59,15 @@ def compute_Lambda_c(Delta, K, is_frozen_D=True):
     for i in range(B_loc):
         for j in range(B_loc):
             if i != j:
-                diff = eigenvalues[j] - eigenvalues[i]
+                diff = eigenvalues[i] - eigenvalues[j]
                 Lmbdac_tilde[i, j] = K_tilde[i, j] * diff / (diff**2 + epsilon**2)
+            else:
+                # [追加] 対角成分（ゲージ）を維持する
+                if Lmbdac_diag is not None:
+                    Lmbdac_tilde[i, i] = Lmbdac_diag[i]
 
     Lmbdac = U @ Lmbdac_tilde @ U.conj().T
     return (Lmbdac + Lmbdac.conj().T) / 2.0
-
-
 # ==========================================
 # 3. ODE時間発展のコアクラス
 # ==========================================
@@ -122,15 +108,17 @@ class TDgGADynamics:
 
     def finalize_setup(self):
         """
-        op_cb/op_bb/op_D 設定後に呼ぶ初期化。
+        op_cb/op_bb/op_D_cdagger_b 設定後に呼ぶ初期化。
         Full TD-gGA モードでは H_emb_0 から D 項を取り除いた基底部を計算する。
-        op_D[a] = (c†_up b_{a,up} + h.c.) + (c†_dn b_{a,dn} + h.c.)  — 既にエルミート。
         Frozen-D モードでは何もしない。
         """
         if self.is_frozen_D or self.D_gf is None:
             return
-        # H_emb_0_no_D = H_emb_0 - Σ_a D_gf[a,0] * op_D[a]
-        H_D_eq = np.einsum('a,aij->ij', self.D_gf[:, 0], self.op_D)
+        
+        # op_D_cdagger_b からエルミートな D項 を構築して H_emb_0 から引く
+        op_half = getattr(self, 'op_D_cdagger_b', getattr(self, 'op_D', None))
+        H_D_half = np.einsum('a,aij->ij', self.D_gf[:, 0], op_half)
+        H_D_eq = H_D_half + H_D_half.conj().T
         self.H_emb_0_no_D = self.H_emb_0 - H_D_eq
 
     def _compute_D_from_nk(self, Delta, R, n_kw):
@@ -148,8 +136,10 @@ class TDgGADynamics:
         -------
         D_new : (B, C) complex
         """
+        # n_kw は N^T を格納 → 物理的 N(ω) に戻してから積分
+        N_mat = n_kw.transpose(0, 2, 1)
         # ∫dω ρ(ω) ω n_{bc}(ω) → 重み付き和 (B, B)
-        n_weighted = np.einsum('k,kbc->bc', self.weights_k * self.omega_k, n_kw)
+        n_weighted = np.einsum('k,kbc->bc', self.weights_k * self.omega_k, N_mat)
         # Q_{b,α} = Σ_c n_weighted_{b,c} R*_{c,α}  → (B, C)
         Q = n_weighted @ R.conj()
         # D = [Δ(1-Δ)]^{-1/2} Q
@@ -161,10 +151,13 @@ class TDgGADynamics:
     def _rebuild_H_emb_with_D(self, D_new):
         """
         Full TD-gGA 専用: 更新された D から H_emb_current を構成する。
-            H_emb_current = H_emb_0_no_D + Σ_a D_new[a,0] * op_D[a]
-        op_D[a] は既にエルミート (spin-up + spin-dn + h.c. を含む)。
+            H_emb_current = H_emb_0_no_D + Σ_a D_new[a,0] * op_D_cdagger_b[a] + h.c.
         """
-        H_D = np.einsum('a,aij->ij', D_new[:, 0], self.op_D)
+        # D * (c^\dagger b) を計算
+        op_half = getattr(self, 'op_D_cdagger_b', getattr(self, 'op_D', None))
+        H_D_half = np.einsum('a,aij->ij', D_new[:, 0], op_half)
+        # エルミート共役を足して D c^\dagger b + D^* b^\dagger c にする
+        H_D = H_D_half + H_D_half.conj().T
         return self.H_emb_0_no_D + H_D
 
     def compute_derivatives(self, t, Y_flat):
@@ -209,23 +202,40 @@ class TDgGADynamics:
         h_qp_0 = R @ self.H_phys @ R.conj().T
 
         # --- 7. K 行列（拘束条件の整合性条件）---
-        comm_n_hqp = n_ab @ h_qp_0 - h_qp_0 @ n_ab
+        if self.is_frozen_D:
+            comm_n_hqp = n_ab @ h_qp_0 - h_qp_0 @ n_ab
+        else:
+            RRdag = R @ R.conj().T
+            N_mat = n_kw.transpose(0, 2, 1)  # N^T → 物理的 N(ω) に戻す
+            # comm_n_hqp = Σ_k w_k [H_QP(ω_k), N(ω_k)]
+            # H_QP = ω*RRdag + Lambda_static (固定 Λ を使用)
+            # Lambda_static = Lmbdac_gf + h_qp_0_eq (平衡値で固定)
+            comm_n_hqp = np.einsum('k,kij->ij', self.weights_k * self.omega_k,
+                                   RRdag @ N_mat - N_mat @ RRdag)
+            lambda_mat = getattr(self, 'Lambda_static', np.zeros((B, B), dtype=complex))
+            N_int = np.einsum('k,kij->ij', self.weights_k, N_mat)  # ∫N(ω) dω ≈ Δ
+            comm_n_hqp += lambda_mat @ N_int - N_int @ lambda_mat
+            
         K = np.zeros((B, B), dtype=complex)
         for a in range(B):
             for b in range(B):
                 comm_op = self.op_bb[a, b] @ H_emb_current - H_emb_current @ self.op_bb[a, b]
                 K[a, b] = Phi.conj() @ comm_op @ Phi
-        K -= comm_n_hqp
+        
+        # 符号は(-)のが物理的に正しい
+       # 正しい入力行列は comm_n_hqp - K となる。
+        K_input = comm_n_hqp - K
 
         # --- 8. Λ^c を決定 ---
-        Lmbdac = compute_Lambda_c(Delta, K, is_frozen_D=self.is_frozen_D)
+        Lmbdac = compute_Lambda_c(Delta, K_input, is_frozen_D=self.is_frozen_D, Lmbdac_diag=getattr(self, 'Lmbdac_diag', None))
 
-        # --- 9. H_emb = H_emb_current + Σ Λ^c_{ab} op_bb[a,b] ---
+        # --- 9. H_emb = H_emb_current + Σ Λ^c_{ba} op_bb_H[a,b] ---
         H_emb = H_emb_current.copy()
         for a in range(B):
             for b in range(B):
-                if abs(Lmbdac[a, b]) > 1e-14:
-                    H_emb += Lmbdac[a, b] * self.op_bb[a, b]
+                # [修正] op_bb_H を使用し、係数の添字を [b, a] にする
+                if abs(Lmbdac[b, a]) > 1e-14:
+                    H_emb += Lmbdac[b, a] * getattr(self, 'op_bb_H', getattr(self, 'op_bb', None))[a, b]
         H_emb = (H_emb + H_emb.conj().T) / 2.0
 
         # --- 10. dΦ/dt = -i H_emb Φ ---
@@ -234,18 +244,22 @@ class TDgGADynamics:
         if self.is_frozen_D:
             return pack_state(dPhi_dt)
 
-        # --- 11. Full TD-gGA: Eq.(17) ---
-        # dn_{ab}/dt = -iω Σ_c (R_b R_c† n_{ac} - R_c R_a† n_{cb})
-        # n_kw は n(ω)^T を格納 (Eq.11 の転置規約)
-        # 行列形式: dn_kw_dt[k] = -iω_k [RR†, n_kw[k]]  (転置規約での等価形)
+        # --- 11. Full TD-gGA: Eq.(17) dN/dt = -i[H_QP, N] ---
+        # H_QP(ω,t) = ω*RRdag(t) + Lambda_static
+        # Lambda_static = Lmbdac_gf + h_qp_0_eq は固定 (n_kw_0 も同じ H_QP で構成)
+        # → [H_QP(t=0), N_0] = 0 が厳密に成立し、エネルギー保存が保証される
         RRdag = R @ R.conj().T  # (B, B)
-        dn_kw_dt = np.array([
-            -1j * self.omega_k[idx] * (RRdag @ n_kw[idx] - n_kw[idx] @ RRdag)
+        lambda_mat = getattr(self, 'Lambda_static', np.zeros((B, B), dtype=complex))
+
+        N_mat = n_kw.transpose(0, 2, 1)  # N^T → 物理的 N(ω) に戻す
+        dN_dt = np.array([
+            -1j * (self.omega_k[idx] * (RRdag @ N_mat[idx] - N_mat[idx] @ RRdag)
+                   + (lambda_mat @ N_mat[idx] - N_mat[idx] @ lambda_mat))
             for idx in range(self.N_omega)
         ])
+        dn_kw_dt = dN_dt.transpose(0, 2, 1)  # d(N^T)/dt に戻す
 
         return pack_state(dPhi_dt, dn_kw_dt)
-
 
 # ==========================================
 # 4. メイン実行関数
@@ -271,9 +285,11 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
     H_phys_1body = physics_params['H_phys_1body']
     op_cb        = physics_params['op_cb']
     op_bb        = physics_params['op_bb']
+    op_bb_H      = physics_params.get('op_bb_H', op_bb) # フォールバックとして op_bb を指定
     is_frozen_D  = physics_params.get('is_frozen_D', True)
     D_gf         = physics_params.get('D_gf', None)
-    op_D         = physics_params.get('op_D', None)
+    # 修正: 'op_D' ではなく 'op_D_cdagger_b' を取得するように変更
+    op_D_cdagger_b = physics_params.get('op_D_cdagger_b', None)
     omega_k      = physics_params.get('omega_k', None)
     weights_k    = physics_params.get('weights_k', None)
     n_kw_0       = physics_params.get('n_kw_0', None)
@@ -283,9 +299,20 @@ def run_quench_dynamics(Phi_0, n_ab_0, t_max, dt, physics_params, rtol=1e-8, ato
                            omega_k=omega_k, weights_k=weights_k)
     system.op_cb = op_cb
     system.op_bb = op_bb
-    if op_D is not None:
-        system.op_D = op_D
-    system.finalize_setup()  # Full TD-gGA: H_emb_0_no_D を計算
+    # [追加] op_bb_H を system にセットする
+    system.op_bb_H = physics_params.get('op_bb_H', op_bb)
+    # [追加] 対角成分のゲージ固定用データをセットする
+    if 'Lmbdac_diag_correct' in physics_params:
+        system.Lmbdac_diag = physics_params['Lmbdac_diag_correct']
+    elif 'Lmbdac_gf' in physics_params:
+        system.Lmbdac_diag = np.diag(physics_params['Lmbdac_gf'])
+    # ★ここに追加: 抽出した静的 Λ をシステムに登録
+    system.Lambda_static = physics_params.get('Lambda_static', np.zeros((B, B), dtype=complex))
+
+    # 修正: op_D_cdagger_b を system にセット
+    if op_D_cdagger_b is not None:
+        system.op_D_cdagger_b = op_D_cdagger_b
+    system.finalize_setup()
 
     # 初期状態のパック (Frozen-D では n_kw_0 を含めない)
     Y0_flat = pack_state(Phi_0, n_kw_0 if not is_frozen_D else None)
