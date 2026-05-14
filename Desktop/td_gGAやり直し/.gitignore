@@ -1,0 +1,14 @@
+# 演算子ファイル（大きいのでトラッキングしない）
+*.npz
+
+# プロット・画像
+*.png
+*.pdf
+
+# Python キャッシュ
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
